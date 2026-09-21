@@ -34,6 +34,7 @@ const personnelSchema = z.object({
   organization: z.string().trim().max(200).nullable().optional(),
   role: z.enum(["LEAD", "SCIENTIST", "LOGISTICS", "MEDICAL", "ENGINEER", "MEMBER"]).optional(),
   status: z.enum(["ASSIGNED", "ON_SITE", "RETURNED", "INACTIVE"]).optional(),
+  lastKnownLocation: z.string().trim().max(200).nullable().optional(),
   emergencyContact: z.string().trim().max(200).nullable().optional(),
 });
 

@@ -38,6 +38,8 @@ export type Personnel = {
   firstName: string;
   lastName: string;
   role: string;
+  status: string;
+  lastKnownLocation: string | null;
 };
 
 export type InventoryItem = {

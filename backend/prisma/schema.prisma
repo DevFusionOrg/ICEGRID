@@ -37,6 +37,7 @@ model Personnel {
   organization String?
   role         PersonnelRole    @default(MEMBER)
   status       PersonnelStatus  @default(ASSIGNED)
+  lastKnownLocation String?
   emergencyContact String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
