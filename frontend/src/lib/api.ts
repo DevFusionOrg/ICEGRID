@@ -27,6 +27,20 @@ export type Expedition = {
   code: string;
 };
 
+export type AlertSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type AlertStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED";
+export type EmergencyAlert = {
+  id: string;
+  expeditionId: string;
+  title: string;
+  message: string;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  location: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+};
+
 type AuthResponse = { user: User; token: string };
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -50,4 +64,12 @@ export function getCollection<T>(path: string, token: string) {
   return request<{ data: T[]; pagination: { total: number; page: number; pageSize: number; totalPages: number } }>(path, {
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+export function createAlert(token: string, data: Pick<EmergencyAlert, "expeditionId" | "title" | "message" | "severity" | "location">) {
+  return request<EmergencyAlert>("/alerts", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function resolveAlert(token: string, id: string) {
+  return request<EmergencyAlert>(`/alerts/${id}/resolve`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
 }
