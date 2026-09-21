@@ -9,6 +9,24 @@ export type User = {
   role: Role;
 };
 
+export type CargoStatus = "PLANNED" | "IN_TRANSIT" | "AT_DESTINATION" | "RECEIVED" | "LOST";
+
+export type CargoItem = {
+  id: string;
+  expeditionId: string;
+  trackingCode: string;
+  name: string;
+  location: string | null;
+  status: CargoStatus;
+  updatedAt: string;
+};
+
+export type Expedition = {
+  id: string;
+  name: string;
+  code: string;
+};
+
 type AuthResponse = { user: User; token: string };
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -29,7 +47,7 @@ export function login(email: string, password: string) {
 }
 
 export function getCollection<T>(path: string, token: string) {
-  return request<{ data: T[]; pagination: { total: number } }>(path, {
+  return request<{ data: T[]; pagination: { total: number; page: number; pageSize: number; totalPages: number } }>(path, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
