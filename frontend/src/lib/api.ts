@@ -25,6 +25,19 @@ export type Expedition = {
   id: string;
   name: string;
   code: string;
+  destination: string | null;
+  description: string | null;
+  status: "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type Personnel = {
+  id: string;
+  expeditionId: string;
+  firstName: string;
+  lastName: string;
+  role: string;
 };
 
 export type AlertSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -72,4 +85,16 @@ export function createAlert(token: string, data: Pick<EmergencyAlert, "expeditio
 
 export function resolveAlert(token: string, id: string) {
   return request<EmergencyAlert>(`/alerts/${id}/resolve`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+}
+
+export function createExpedition(token: string, data: Record<string, unknown>) {
+  return request<Expedition>("/expeditions", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function createPersonnel(token: string, data: Record<string, unknown>) {
+  return request<Personnel>("/personnel", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function createCargoItem(token: string, data: Record<string, unknown>) {
+  return request<CargoItem>("/cargo-items", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
 }
