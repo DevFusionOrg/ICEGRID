@@ -82,6 +82,7 @@ model InventoryItem {
   name         String
   description  String?
   quantity     Int               @default(0)
+  reorderThreshold Int           @default(0)
   unit         String            @default("unit")
   location     String?
   condition    InventoryCondition @default(GOOD)

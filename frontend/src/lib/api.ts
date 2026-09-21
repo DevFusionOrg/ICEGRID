@@ -40,6 +40,19 @@ export type Personnel = {
   role: string;
 };
 
+export type InventoryItem = {
+  id: string;
+  expeditionId: string | null;
+  cargoItemId: string | null;
+  sku: string;
+  name: string;
+  quantity: number;
+  reorderThreshold: number;
+  unit: string;
+  location: string | null;
+  condition: string;
+};
+
 export type AlertSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type AlertStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED" | "DISMISSED";
 export type EmergencyAlert = {
@@ -97,4 +110,12 @@ export function createPersonnel(token: string, data: Record<string, unknown>) {
 
 export function createCargoItem(token: string, data: Record<string, unknown>) {
   return request<CargoItem>("/cargo-items", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function createInventoryItem(token: string, data: Record<string, unknown>) {
+  return request<InventoryItem>("/inventory-items", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function updateInventoryItem(token: string, id: string, data: Record<string, unknown>) {
+  return request<InventoryItem>(`/inventory-items/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
 }

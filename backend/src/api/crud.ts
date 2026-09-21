@@ -60,6 +60,7 @@ const inventorySchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
   quantity: z.number().int().min(0).optional(),
+  reorderThreshold: z.number().int().min(0).optional(),
   unit: z.string().trim().min(1).max(50).optional(),
   location: z.string().trim().max(200).nullable().optional(),
   condition: z.enum(["NEW", "GOOD", "NEEDS_REPAIR", "DAMAGED", "RETIRED"]).optional(),

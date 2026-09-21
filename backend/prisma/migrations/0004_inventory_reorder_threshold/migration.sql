@@ -1,0 +1,1 @@
+ALTER TABLE "InventoryItem" ADD COLUMN "reorderThreshold" INTEGER NOT NULL DEFAULT 0;
