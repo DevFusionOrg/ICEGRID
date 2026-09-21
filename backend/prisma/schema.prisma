@@ -61,6 +61,7 @@ model CargoItem {
   status       CargoStatus   @default(PLANNED)
   origin       String?
   destination  String?
+  location     String?
   expectedAt   DateTime?
   receivedAt   DateTime?
   createdAt    DateTime      @default(now())

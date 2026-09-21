@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { Router, type Request, type Response } from "express";
 import { z, type ZodType } from "zod";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
+import { broadcastCargoUpdate } from "../realtime.js";
 
 export const prisma = new PrismaClient();
 
@@ -16,6 +17,7 @@ const expeditionSchema = z.object({
   name: z.string().trim().min(1).max(200),
   code: z.string().trim().min(1).max(50),
   destination: z.string().trim().max(200).nullable().optional(),
+  location: z.string().trim().max(200).nullable().optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   status: z.enum(["PLANNED", "ACTIVE", "COMPLETED", "CANCELLED"]).optional(),
   startDate: dateSchema,
@@ -160,6 +162,7 @@ function createSimpleCrudRoutes<T extends object>(
     update: (id: string, data: Partial<T>) => Promise<unknown>;
     delete: (id: string) => Promise<void>;
     name: string;
+    notifyUpdate?: (before: unknown, after: unknown) => void;
   },
 ) {
   router.get("/", asyncRoute(async (req, res) => {
@@ -184,7 +187,11 @@ function createSimpleCrudRoutes<T extends object>(
     const id = parseId(req, res);
     const data = parseBody(patchSchema, req, res);
     if (!id || !data) return;
-    res.json(await operations.update(id, data));
+    const before = await operations.get(id);
+    if (!before) { res.status(404).json({ error: `${operations.name} not found` }); return; }
+    const updated = await operations.update(id, data);
+    operations.notifyUpdate?.(before, updated);
+    res.json(updated);
   }));
   router.delete("/:id", asyncRoute(async (req, res) => {
     const id = parseId(req, res);
@@ -218,7 +225,39 @@ createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {
   get: (id) => prisma.cargoItem.findUnique({ where: { id } }),
   update: (id, data) => prisma.cargoItem.update({ where: { id }, data }),
   delete: async (id) => { await prisma.cargoItem.delete({ where: { id } }); },
+  notifyUpdate: (before, after) => {
+    const previous = before as { location: string | null; status: string };
+    const current = after as { id: string; location: string | null; status: string; updatedAt: Date };
+    if (previous.location !== current.location || previous.status !== current.status) {
+      broadcastCargoUpdate({
+        id: current.id,
+        location: current.location,
+        status: current.status,
+        updatedAt: current.updatedAt,
+      });
+    }
+  },
 });
+
+const cargoLocationSchema = z.object({
+  location: z.string().trim().min(1).max(200),
+});
+
+cargoRoutes.post("/:id/location", asyncRoute(async (req, res) => {
+  const id = parseId(req, res);
+  const data = parseBody(cargoLocationSchema, req, res);
+  if (!id || !data) return;
+  const before = await prisma.cargoItem.findUnique({ where: { id } });
+  if (!before) { res.status(404).json({ error: "Cargo item not found" }); return; }
+  const updated = await prisma.cargoItem.update({ where: { id }, data });
+  broadcastCargoUpdate({
+    id: updated.id,
+    location: updated.location,
+    status: updated.status,
+    updatedAt: updated.updatedAt,
+  });
+  res.json(updated);
+}));
 
 export const inventoryRoutes = Router();
 createSimpleCrudRoutes(inventoryRoutes, inventorySchema, inventorySchema.partial(), {
