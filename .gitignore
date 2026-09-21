@@ -10,5 +10,3 @@ frontend/.env
 frontend/.env.local
 backend/.env
 backend/.env.local
-
-backend/prisma/migrations/
