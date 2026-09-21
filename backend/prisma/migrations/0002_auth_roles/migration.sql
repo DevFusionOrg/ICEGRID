@@ -1,0 +1,17 @@
+-- AlterEnum
+ALTER TYPE "UserRole" RENAME TO "UserRole_old";
+
+CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'COORDINATOR', 'FIELD_PERSONNEL', 'LOGISTICS_OFFICER');
+
+ALTER TABLE "User"
+  ALTER COLUMN "role" DROP DEFAULT,
+  ALTER COLUMN "role" TYPE "UserRole" USING (
+    CASE "role"::text
+      WHEN 'OPERATOR' THEN 'COORDINATOR'
+      WHEN 'VIEWER' THEN 'FIELD_PERSONNEL'
+      ELSE "role"::text
+    END
+  )::"UserRole";
+
+ALTER TABLE "User" ALTER COLUMN "role" SET DEFAULT 'COORDINATOR';
+DROP TYPE "UserRole_old";
