@@ -9,6 +9,17 @@ export type CargoUpdate = {
   updatedAt: Date;
 };
 
+export type AlertUpdate = {
+  id: string;
+  expeditionId: string;
+  title: string;
+  message: string;
+  severity: string;
+  status: string;
+  location: string | null;
+  createdAt: Date;
+};
+
 let io: Server | undefined;
 
 export function createRealtimeServer(httpServer: HttpServer) {
@@ -26,6 +37,7 @@ export function createRealtimeServer(httpServer: HttpServer) {
     }
     try {
       socket.data.user = verifyAuthToken(token);
+      socket.join(`role:${socket.data.user.role}`);
       next();
     } catch {
       next(new Error("Invalid or expired token"));
@@ -37,6 +49,10 @@ export function createRealtimeServer(httpServer: HttpServer) {
 
 export function broadcastCargoUpdate(update: CargoUpdate) {
   io?.emit("cargo:update", update);
+}
+
+export function broadcastAlertNew(update: AlertUpdate) {
+  io?.to("role:ADMIN").to("role:COORDINATOR").emit("alert:new", update);
 }
 
 export function getRealtimeServer() {

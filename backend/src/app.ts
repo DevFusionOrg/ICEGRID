@@ -15,6 +15,7 @@ app.use("/api/personnel", requireAuth, personnelRoutes);
 app.use("/api/cargo-items", requireAuth, cargoRoutes);
 app.use("/api/inventory-items", requireAuth, inventoryRoutes);
 app.use("/api/emergency-alerts", requireAuth, alertRoutes);
+app.use("/api/alerts", requireAuth, alertRoutes);
 
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok", service: "ncpors-backend" });

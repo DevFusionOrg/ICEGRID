@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { Router, type Request, type Response } from "express";
 import { z, type ZodType } from "zod";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
-import { broadcastCargoUpdate } from "../realtime.js";
+import { broadcastAlertNew, broadcastCargoUpdate } from "../realtime.js";
 
 export const prisma = new PrismaClient();
 
@@ -75,6 +75,11 @@ const alertSchema = z.object({
   location: z.string().trim().max(200).nullable().optional(),
   resolvedAt: dateSchema,
 });
+
+export const sortAlertsBySeverity = <T extends { severity: keyof typeof alertSeverityRank; createdAt: Date }>(alerts: T[]) =>
+  [...alerts].sort((left, right) => alertSeverityRank[left.severity] - alertSeverityRank[right.severity] || right.createdAt.getTime() - left.createdAt.getTime());
+
+const alertSeverityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as const;
 
 const asyncRoute = (handler: (request: Request, response: Response) => Promise<void>) =>
   (request: Request, response: Response) => {
@@ -276,17 +281,28 @@ export const alertRoutes = Router();
 alertRoutes.get("/", asyncRoute(async (req, res) => {
   const pagination = parsePagination(req, res);
   if (!pagination) return;
-  const [data, total] = await Promise.all([
-    prisma.emergencyAlert.findMany({ skip: (pagination.page - 1) * pagination.pageSize, take: pagination.pageSize, orderBy: { createdAt: "desc" } }),
+  const [alerts, total] = await Promise.all([
+    prisma.emergencyAlert.findMany({ orderBy: { createdAt: "desc" } }),
     prisma.emergencyAlert.count(),
   ]);
+  const data = sortAlertsBySeverity(alerts)
+    .slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize);
   sendPage(res, data, total, pagination.page, pagination.pageSize);
 }));
 alertRoutes.post("/", asyncRoute(async (req, res) => {
   const data = parseBody(alertSchema, req, res);
   const user = (req as AuthenticatedRequest).user;
   if (!data) return;
-  res.status(201).json(await prisma.emergencyAlert.create({ data: { ...data, createdById: user.id } }));
+  const alert = await prisma.emergencyAlert.create({ data: { ...data, createdById: user.id } });
+  broadcastAlertNew(alert);
+  res.status(201).json(alert);
+}));
+alertRoutes.patch("/:id/resolve", asyncRoute(async (req, res) => {
+  const id = parseId(req, res);
+  if (!id) return;
+  const existing = await prisma.emergencyAlert.findUnique({ where: { id } });
+  if (!existing) { res.status(404).json({ error: "Emergency alert not found" }); return; }
+  res.json(await prisma.emergencyAlert.update({ where: { id }, data: { status: "RESOLVED", resolvedAt: new Date() } }));
 }));
 alertRoutes.get("/:id", asyncRoute(async (req, res) => {
   const id = parseId(req, res);
