@@ -50,3 +50,14 @@ npm run seed --workspace backend
 ```
 
 Set `SEED_PASSWORD` in `backend/.env` before running the seed script.
+
+## Production containers
+
+Production images are defined in `frontend/Dockerfile` and `backend/Dockerfile`. Copy the root environment example to a deployment-only `.env`, set strong values for `POSTGRES_PASSWORD` and `JWT_SECRET`, and start the stack:
+
+```powershell
+Copy-Item .env.example .env
+docker compose -f docker-compose.prod.yml up --build -d
+```
+
+The frontend is published on port `8080` by default. Production secrets are supplied through the environment and are not stored in the repository.

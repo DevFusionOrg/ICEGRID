@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_DB: ncpors
+      POSTGRES_USER: ncpors
+      POSTGRES_PASSWORD: ci-only-password
+      FRONTEND_URL: http://localhost:8080
+      JWT_SECRET: ci-only-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test --workspace backend
+      - run: npm run build
+      - run: docker compose -f docker-compose.prod.yml config
+      - run: docker build --file backend/Dockerfile --tag ncpors-backend:ci .
+      - run: docker build --file frontend/Dockerfile --tag ncpors-frontend:ci .
