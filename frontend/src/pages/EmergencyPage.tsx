@@ -7,6 +7,7 @@ import { MapContainer, Marker, Popup } from "react-leaflet";
 import { io } from "socket.io-client";
 import { AlertTriangle, BellRing, CheckCircle2, LocateFixed, Radio } from "lucide-react";
 import { AlertSeverity, EmergencyAlert, createAlert, getCollection, resolveAlert } from "../lib/api";
+import { enqueueRequest } from "../lib/offlineQueue";
 import { useAuthStore } from "../stores/auth";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
@@ -50,8 +51,15 @@ export function EmergencyPage() {
   const expeditions = useQuery({ queryKey: ["expeditions", "sos"], queryFn: () => getCollection<{ id: string; name: string }>("/expeditions?pageSize=100", token!), enabled: Boolean(token) });
   const resolveMutation = useMutation({ mutationFn: (id: string) => resolveAlert(token!, id), onSuccess: (updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert)) });
   const sosMutation = useMutation({
-    mutationFn: (location: string | null) => createAlert(token!, { expeditionId: expeditions.data?.data[0]?.id ?? "", title: "SOS from field personnel", message: sosMessage || "Immediate assistance requested.", severity: "CRITICAL", location }),
-    onSuccess: (created) => { setAlerts((current) => [created, ...current]); setSosMessage(""); setSosError(""); },
+    mutationFn: async (location: string | null) => {
+      const body = { expeditionId: expeditions.data?.data[0]?.id ?? "", title: "SOS from field personnel", message: sosMessage || "Immediate assistance requested.", severity: "CRITICAL" as const, location };
+      if (!navigator.onLine) {
+        await enqueueRequest({ path: "/alerts", method: "POST", body, token: token! });
+        return null;
+      }
+      return createAlert(token!, body);
+    },
+    onSuccess: (created) => { if (created) setAlerts((current) => [created, ...current]); setSosMessage(""); setSosError(""); },
     onError: (error) => setSosError(error instanceof Error ? error.message : "Unable to raise SOS"),
   });
 

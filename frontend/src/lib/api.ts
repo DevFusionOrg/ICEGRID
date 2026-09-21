@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+import { enqueueRequest } from "./offlineQueue";
 
 export type Role = "ADMIN" | "COORDINATOR" | "FIELD_PERSONNEL" | "LOGISTICS_OFFICER";
 
@@ -120,4 +121,13 @@ export function createInventoryItem(token: string, data: Record<string, unknown>
 
 export function updateInventoryItem(token: string, id: string, data: Record<string, unknown>) {
   return request<InventoryItem>(`/inventory-items/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export async function updateCargoLocation(token: string, id: string, location: string) {
+  const body = { location };
+  if (!navigator.onLine) {
+    await enqueueRequest({ path: `/cargo-items/${id}/location`, method: "POST", body, token });
+    return { queued: true };
+  }
+  return request<CargoItem>(`/cargo-items/${id}/location`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
 }
