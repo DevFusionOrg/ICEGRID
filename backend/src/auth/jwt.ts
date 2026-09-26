@@ -1,9 +1,8 @@
 import jwt from "jsonwebtoken";
-import type { UserRole } from "./roles.js";
+import { isUserRole, type UserRole } from "./roles.js";
 
 export type AuthTokenPayload = {
   sub: string;
-  email: string;
   role: UserRole;
 };
 
@@ -22,5 +21,9 @@ export function signAuthToken(payload: AuthTokenPayload) {
 }
 
 export function verifyAuthToken(token: string) {
-  return jwt.verify(token, getSecret()) as AuthTokenPayload;
+  const decoded = jwt.verify(token, getSecret());
+  if (typeof decoded === "string" || !decoded.exp || !decoded.iat || typeof decoded.sub !== "string" || !isUserRole(decoded.role)) {
+    throw new Error("Invalid authentication token payload");
+  }
+  return { sub: decoded.sub, role: decoded.role, iat: decoded.iat, exp: decoded.exp } as AuthTokenPayload & { iat: number; exp: number };
 }
