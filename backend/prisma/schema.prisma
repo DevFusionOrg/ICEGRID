@@ -25,6 +25,7 @@ model Expedition {
   cargoItems      CargoItem[]
   inventoryItems  InventoryItem[]
   emergencyAlerts EmergencyAlert[]
+  locations       Location[]
 }
 
 model Personnel {
@@ -38,12 +39,15 @@ model Personnel {
   role         PersonnelRole    @default(MEMBER)
   status       PersonnelStatus  @default(ASSIGNED)
   lastKnownLocation String?
+  currentLocationId String? @unique
   emergencyContact String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   expedition Expedition @relation(fields: [expeditionId], references: [id], onDelete: Cascade)
   ledExpeditions Expedition[] @relation("ExpeditionLead")
+  currentLocation Location? @relation("PersonnelCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
+  locationHistory PersonnelLocationHistory[]
 
   @@index([expeditionId])
   @@index([status])
@@ -63,6 +67,7 @@ model CargoItem {
   origin       String?
   destination  String?
   location     String?
+  currentLocationId String? @unique
   expectedAt   DateTime?
   receivedAt   DateTime?
   createdAt    DateTime      @default(now())
@@ -70,6 +75,8 @@ model CargoItem {
 
   expedition     Expedition      @relation(fields: [expeditionId], references: [id], onDelete: Cascade)
   inventoryItems InventoryItem[]
+  currentLocation Location? @relation("CargoCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
+  locationHistory CargoLocationHistory[]
 
   @@index([expeditionId])
   @@index([status])
@@ -108,6 +115,7 @@ model EmergencyAlert {
   severity       AlertSeverity @default(MEDIUM)
   status         AlertStatus   @default(OPEN)
   location       String?
+  currentLocationId String? @unique
   resolvedAt     DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -115,9 +123,75 @@ model EmergencyAlert {
   expedition     Expedition @relation(fields: [expeditionId], references: [id], onDelete: Cascade)
   createdBy      User       @relation("CreatedAlerts", fields: [createdById], references: [id], onDelete: Restrict)
   acknowledgedBy User?      @relation("AcknowledgedAlerts", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+  currentLocation Location? @relation("EmergencyCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
+  locationHistory EmergencyLocationHistory[]
 
   @@index([expeditionId, status])
   @@index([severity])
+}
+
+model Location {
+  id               String         @id @default(cuid())
+  latitude         Decimal        @db.Decimal(11, 8)
+  longitude        Decimal        @db.Decimal(11, 8)
+  observedAt       DateTime
+  accuracyMeters   Decimal?       @db.Decimal(10, 2)
+  altitudeMeters   Decimal?       @db.Decimal(10, 2)
+  source           LocationSource @default(MANUAL)
+  eventId          String?        @unique
+  expeditionId     String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  expedition       Expedition?    @relation(fields: [expeditionId], references: [id], onDelete: SetNull)
+  currentForPersonnel Personnel?  @relation("PersonnelCurrentLocation")
+  currentForCargo   CargoItem?    @relation("CargoCurrentLocation")
+  currentForEmergency EmergencyAlert? @relation("EmergencyCurrentLocation")
+  personnelHistory PersonnelLocationHistory[]
+  cargoHistory     CargoLocationHistory[]
+  emergencyHistory EmergencyLocationHistory[]
+
+  @@index([expeditionId, observedAt])
+  @@index([observedAt])
+}
+
+model PersonnelLocationHistory {
+  id           String   @id @default(cuid())
+  personnelId  String
+  locationId   String
+  createdAt    DateTime @default(now())
+
+  personnel Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  location  Location  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([personnelId, locationId])
+  @@index([personnelId, createdAt])
+}
+
+model CargoLocationHistory {
+  id          String   @id @default(cuid())
+  cargoItemId String
+  locationId  String
+  createdAt   DateTime @default(now())
+
+  cargoItem CargoItem @relation(fields: [cargoItemId], references: [id], onDelete: Cascade)
+  location  Location  @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([cargoItemId, locationId])
+  @@index([cargoItemId, createdAt])
+}
+
+model EmergencyLocationHistory {
+  id              String   @id @default(cuid())
+  emergencyAlertId String
+  locationId      String
+  createdAt       DateTime @default(now())
+
+  emergencyAlert EmergencyAlert @relation(fields: [emergencyAlertId], references: [id], onDelete: Cascade)
+  location       Location      @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([emergencyAlertId, locationId])
+  @@index([emergencyAlertId, createdAt])
 }
 
 model User {
@@ -192,6 +266,14 @@ enum AlertStatus {
   ACKNOWLEDGED
   RESOLVED
   DISMISSED
+}
+
+enum LocationSource {
+  MANUAL
+  GPS
+  SYSTEM
+  IMPORT
+  SIMULATION
 }
 
 enum UserRole {

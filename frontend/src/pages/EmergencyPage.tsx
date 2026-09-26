@@ -6,9 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup } from "react-leaflet";
 import { io } from "socket.io-client";
 import { AlertTriangle, BellRing, CheckCircle2, LocateFixed, Radio } from "lucide-react";
-import { AlertSeverity, EmergencyAlert, createAlert, getCollection, resolveAlert } from "../lib/api";
+import { AlertSeverity, EmergencyAlert, LocationInput, createAlert, getCollection, resolveAlert } from "../lib/api";
 import { enqueueRequest } from "../lib/offlineQueue";
+import { createLocationEventId } from "../lib/locationEventId";
 import { useAuthStore } from "../stores/auth";
+import { parsePolarLocation } from "../components/PolarMap";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
@@ -19,13 +21,6 @@ const projectionOptions = { resolutions: [8192, 4096, 2048, 1024, 512, 256, 128,
 const antarctic = new ProjectedLeaflet.Proj.CRS("EPSG:3031", "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +datum=WGS84 +units=m +no_defs", projectionOptions);
 const arctic = new ProjectedLeaflet.Proj.CRS("EPSG:3995", "+proj=stere +lat_0=90 +lat_ts=71 +lon_0=0 +datum=WGS84 +units=m +no_defs", projectionOptions);
 
-function parseLocation(location: string | null): [number, number] | null {
-  const match = location?.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (!match) return null;
-  const point: [number, number] = [Number(match[1]), Number(match[2])];
-  return point[0] >= -90 && point[0] <= 90 && point[1] >= -180 && point[1] <= 180 ? point : null;
-}
-
 function alertIcon(severity: AlertSeverity) {
   return L.divIcon({ className: "alert-marker", html: `<span style="background:${colors[severity]}"></span>`, iconSize: [20, 20], iconAnchor: [10, 10] });
 }
@@ -34,7 +29,7 @@ function AlertMap({ alerts, region }: { alerts: EmergencyAlert[]; region: "antar
   const crs = region === "arctic" ? arctic : antarctic;
   return <MapContainer key={region} className="h-full min-h-[420px] w-full" crs={crs} center={[0, 0]} zoom={2} scrollWheelZoom>
     {alerts.filter((alert) => alert.status !== "RESOLVED").map((alert) => {
-      const point = parseLocation(alert.location);
+      const point = parsePolarLocation(alert.currentLocation ?? alert.location);
       return point ? <Marker key={alert.id} position={point} icon={alertIcon(alert.severity)}><Popup><strong>{alert.title}</strong><br />{alert.message}<br />{alert.severity}</Popup></Marker> : null;
     })}
   </MapContainer>;
@@ -51,8 +46,15 @@ export function EmergencyPage() {
   const expeditions = useQuery({ queryKey: ["expeditions", "sos"], queryFn: () => getCollection<{ id: string; name: string }>("/expeditions?pageSize=100", token!), enabled: Boolean(token) });
   const resolveMutation = useMutation({ mutationFn: (id: string) => resolveAlert(token!, id), onSuccess: (updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert)) });
   const sosMutation = useMutation({
-    mutationFn: async (location: string | null) => {
-      const body = { expeditionId: expeditions.data?.data[0]?.id ?? "", title: "SOS from field personnel", message: sosMessage || "Immediate assistance requested.", severity: "CRITICAL" as const, location };
+    mutationFn: async (reportedLocation: { location: string | null; coordinates?: LocationInput }) => {
+      const body = {
+        expeditionId: expeditions.data?.data[0]?.id ?? "",
+        title: "SOS from field personnel",
+        message: sosMessage || "Immediate assistance requested.",
+        severity: "CRITICAL" as const,
+        location: reportedLocation.location,
+        ...(reportedLocation.coordinates ? { locationCoordinates: reportedLocation.coordinates } : {}),
+      };
       if (!navigator.onLine) {
         await enqueueRequest({ path: "/alerts", method: "POST", body, token: token! });
         return null;
@@ -75,8 +77,23 @@ export function EmergencyPage() {
   const newestFirst = useMemo(() => [...alerts].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)), [alerts]);
   const raiseSos = () => {
     if (!expeditions.data?.data[0]) { setSosError("An expedition is required before raising an SOS."); return; }
-    if (!navigator.geolocation) { sosMutation.mutate(null); return; }
-    navigator.geolocation.getCurrentPosition((position) => sosMutation.mutate(`${position.coords.latitude},${position.coords.longitude}`), () => sosMutation.mutate(null), { enableHighAccuracy: true, timeout: 8000 });
+    if (!navigator.geolocation) { sosMutation.mutate({ location: null }); return; }
+    navigator.geolocation.getCurrentPosition((position) => {
+      const { latitude, longitude, accuracy, altitude } = position.coords;
+      const location = `${latitude},${longitude}`;
+      sosMutation.mutate({
+        location,
+        coordinates: {
+          latitude,
+          longitude,
+          observedAt: new Date(position.timestamp).toISOString(),
+          accuracyMeters: accuracy,
+          ...(altitude === null ? {} : { altitudeMeters: altitude }),
+          source: "GPS",
+          eventId: createLocationEventId(),
+        },
+      });
+    }, () => sosMutation.mutate({ location: null }), { enableHighAccuracy: true, timeout: 8000 });
   };
 
   return <div className="space-y-6">

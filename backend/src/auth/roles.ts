@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   "inventory.manage",
   "assets.read",
   "assets.manage",
+  "locations.read",
   "emergency.read",
   "emergency.create",
   "emergency.acknowledge",
@@ -43,6 +44,7 @@ const rolePermissions = {
     "cargo.read", "cargo.manage",
     "inventory.read", "inventory.manage",
     "assets.read", "assets.manage",
+    "locations.read",
     "emergency.read", "emergency.create", "emergency.acknowledge", "emergency.resolve", "emergency.manage",
     "dashboard.read",
   ],
@@ -53,6 +55,7 @@ const rolePermissions = {
   LOGISTICS_OFFICER: [
     "expeditions.read", "personnel.read", "cargo.read", "cargo.manage",
     "inventory.read", "inventory.manage", "assets.read", "assets.manage",
+    "locations.read",
     "emergency.read", "emergency.create", "dashboard.read",
   ],
 } as const satisfies Record<UserRole, readonly Permission[]>;

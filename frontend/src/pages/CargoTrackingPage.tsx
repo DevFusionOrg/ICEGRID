@@ -34,7 +34,7 @@ export function CargoTrackingPage() {
   useEffect(() => {
     if (!token) return;
     const socket = io(SOCKET_URL, { auth: { token } });
-    socket.on("cargo:update", (update: Pick<CargoItem, "id" | "location" | "status" | "updatedAt">) => {
+    socket.on("cargo:update", (update: Pick<CargoItem, "id" | "location" | "status" | "updatedAt" | "currentLocation">) => {
       setCargo((current) => current.map((item) => item.id === update.id ? { ...item, ...update } : item));
     });
     return () => { socket.disconnect(); };
@@ -53,7 +53,7 @@ export function CargoTrackingPage() {
         <div className="border-t border-slate-100 pt-4"><p className="text-sm font-semibold">Field location update</p><select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={locationItem} onChange={(event) => setLocationItem(event.target.value)}><option value="">Select cargo</option>{cargo.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="latitude,longitude" value={location} onChange={(event) => setLocation(event.target.value)} /><button className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white" onClick={() => { void submitLocation(); }}>Save location</button>{locationMessage && <p className="mt-2 text-xs text-emerald-700">{locationMessage}</p>}</div>
         <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">{STATUS_OPTIONS.slice(1).map((item) => <div key={item} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusColors[item as CargoStatus] }} />{formatStatus(item)}</div>)}</div>
       </aside>
-      <section className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-2 text-sm font-semibold"><MapPinned className="h-4 w-4 text-sky-600" />{filteredCargo.length} cargo items on map</div><Search className="h-4 w-4 text-slate-400" /></div><div className="h-[560px] bg-slate-100"><PolarMap markers={filteredCargo.map((item) => ({ id: item.id, location: item.location, label: item.name, detail: `${item.trackingCode} · ${item.status}`, color: statusColors[item.status] }))} region={region} /></div><p className="px-5 py-3 text-xs text-slate-400">Locations use latitude,longitude strings (for example, -77.85,166.67). Items without coordinates remain in the filter list.</p></section>
+      <section className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-2 text-sm font-semibold"><MapPinned className="h-4 w-4 text-sky-600" />{filteredCargo.length} cargo items on map</div><Search className="h-4 w-4 text-slate-400" /></div><div className="h-[560px] bg-slate-100"><PolarMap markers={filteredCargo.map((item) => ({ id: item.id, location: item.currentLocation ?? item.location, label: item.name, detail: `${item.trackingCode} · ${item.status}`, color: statusColors[item.status] }))} region={region} /></div><p className="px-5 py-3 text-xs text-slate-400">Structured coordinates are used when available; older text locations remain supported.</p></section>
     </div>
   </div>;
 }

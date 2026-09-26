@@ -1,9 +1,12 @@
 import { Router, type Request, type Response } from "express";
-import { z, type ZodType } from "zod";
+import { z, type ZodType, type ZodTypeAny } from "zod";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
 import { requirePermission } from "../auth/middleware.js";
+import { hasPermission } from "../auth/roles.js";
 import { prisma } from "../db/prisma.js";
 import { broadcastAlertNew, broadcastCargoUpdate } from "../realtime.js";
+import { createLocationInTransaction, formatLegacyLocation, serializeLocation, recordLocation } from "../modules/locations/service.js";
+import { locationInputSchema, parseLegacyCoordinates } from "../modules/locations/validation.js";
 
 export { prisma };
 
@@ -76,6 +79,7 @@ const alertSchema = z.object({
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   status: z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED", "DISMISSED"]).optional(),
   location: z.string().trim().max(200).nullable().optional(),
+  locationCoordinates: locationInputSchema.omit({ expeditionId: true }).optional(),
   resolvedAt: dateSchema,
 });
 
@@ -93,7 +97,7 @@ function validationError(response: Response, error: z.ZodError) {
   response.status(400).json({ error: "Validation failed", details: error.flatten() });
 }
 
-function parseBody<T>(schema: ZodType<T>, request: Request, response: Response): T | undefined {
+function parseBody<TSchema extends ZodTypeAny>(schema: TSchema, request: Request, response: Response): z.infer<TSchema> | undefined {
   const result = schema.safeParse(request.body);
   if (!result.success) {
     validationError(response, result.error);
@@ -122,6 +126,16 @@ function parsePagination(request: Request, response: Response) {
 
 function sendPage(response: Response, data: unknown[], total: number, page: number, pageSize: number) {
   response.json({ data, pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) } });
+}
+
+function filterStructuredLocation<T>(request: Request, value: T): T {
+  const role = (request as AuthenticatedRequest).user.role;
+  if (hasPermission(role, "locations.read") || typeof value !== "object" || value === null) return value;
+  const filtered = { ...value, currentLocation: null } as Record<string, unknown>;
+  for (const key of ["location", "lastKnownLocation"]) {
+    if (typeof filtered[key] === "string" && parseLegacyCoordinates(filtered[key] as string)) filtered[key] = null;
+  }
+  return filtered as T;
 }
 
 export const expeditionRoutes = Router();
@@ -179,7 +193,7 @@ function createSimpleCrudRoutes<T extends object>(
     const pagination = parsePagination(req, res);
     if (!pagination) return;
     const result = await operations.list((pagination.page - 1) * pagination.pageSize, pagination.pageSize);
-    sendPage(res, result.data, result.total, pagination.page, pagination.pageSize);
+    sendPage(res, result.data.map((item) => filterStructuredLocation(req, item)), result.total, pagination.page, pagination.pageSize);
   }));
   router.post("/", requirePermission(operations.managePermission), asyncRoute(async (req, res) => {
     const data = parseBody(schema, req, res);
@@ -191,7 +205,7 @@ function createSimpleCrudRoutes<T extends object>(
     if (!id) return;
     const data = await operations.get(id);
     if (!data) { res.status(404).json({ error: `${operations.name} not found` }); return; }
-    res.json(data);
+    res.json(filterStructuredLocation(req, data));
   }));
   router.patch("/:id", requirePermission(operations.managePermission), asyncRoute(async (req, res) => {
     const id = parseId(req, res);
@@ -217,12 +231,22 @@ createSimpleCrudRoutes(personnelRoutes, personnelSchema, personnelSchema.partial
   readPermission: "personnel.read",
   managePermission: "personnel.manage",
   list: async (skip, take) => {
-    const [data, total] = await Promise.all([prisma.personnel.findMany({ skip, take, orderBy: { createdAt: "desc" } }), prisma.personnel.count()]);
+    const [rows, total] = await Promise.all([prisma.personnel.findMany({ skip, take, orderBy: { createdAt: "desc" }, include: { currentLocation: true } }), prisma.personnel.count()]);
+    const data = rows.map((row) => ({ ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null }));
     return { data, total };
   },
-  create: (data) => prisma.personnel.create({ data }),
-  get: (id) => prisma.personnel.findUnique({ where: { id } }),
-  update: (id, data) => prisma.personnel.update({ where: { id }, data }),
+  create: async (data) => {
+    const row = await prisma.personnel.create({ data, include: { currentLocation: true } });
+    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
+  },
+  get: async (id) => {
+    const row = await prisma.personnel.findUnique({ where: { id }, include: { currentLocation: true } });
+    return row ? { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null } : null;
+  },
+  update: async (id, data) => {
+    const row = await prisma.personnel.update({ where: { id }, data, include: { currentLocation: true } });
+    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
+  },
   delete: async (id) => { await prisma.personnel.delete({ where: { id } }); },
 });
 
@@ -232,20 +256,31 @@ createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {
   readPermission: "cargo.read",
   managePermission: "cargo.manage",
   list: async (skip, take) => {
-    const [data, total] = await Promise.all([prisma.cargoItem.findMany({ skip, take, orderBy: { createdAt: "desc" } }), prisma.cargoItem.count()]);
+    const [rows, total] = await Promise.all([prisma.cargoItem.findMany({ skip, take, orderBy: { createdAt: "desc" }, include: { currentLocation: true } }), prisma.cargoItem.count()]);
+    const data = rows.map((row) => ({ ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null }));
     return { data, total };
   },
-  create: (data) => prisma.cargoItem.create({ data }),
-  get: (id) => prisma.cargoItem.findUnique({ where: { id } }),
-  update: (id, data) => prisma.cargoItem.update({ where: { id }, data }),
+  create: async (data) => {
+    const row = await prisma.cargoItem.create({ data, include: { currentLocation: true } });
+    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
+  },
+  get: async (id) => {
+    const row = await prisma.cargoItem.findUnique({ where: { id }, include: { currentLocation: true } });
+    return row ? { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null } : null;
+  },
+  update: async (id, data) => {
+    const row = await prisma.cargoItem.update({ where: { id }, data, include: { currentLocation: true } });
+    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
+  },
   delete: async (id) => { await prisma.cargoItem.delete({ where: { id } }); },
   notifyUpdate: (before, after) => {
     const previous = before as { location: string | null; status: string };
-    const current = after as { id: string; location: string | null; status: string; updatedAt: Date };
+    const current = after as { id: string; location: string | null; status: string; updatedAt: Date; currentLocation: import("../modules/locations/service.js").LocationPoint | null };
     if (previous.location !== current.location || previous.status !== current.status) {
       broadcastCargoUpdate({
         id: current.id,
         location: current.location,
+        currentLocation: current.currentLocation,
         status: current.status,
         updatedAt: current.updatedAt,
       });
@@ -255,6 +290,11 @@ createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {
 
 const cargoLocationSchema = z.object({
   location: z.string().trim().min(1).max(200),
+  observedAt: dateSchema,
+  accuracyMeters: z.number().nonnegative().optional(),
+  altitudeMeters: z.number().optional(),
+  source: z.enum(["MANUAL", "GPS", "SYSTEM", "IMPORT", "SIMULATION"]).optional(),
+  eventId: z.string().uuid().optional(),
 });
 
 cargoRoutes.post("/:id/location", requirePermission("cargo.manage"), asyncRoute(async (req, res) => {
@@ -263,10 +303,29 @@ cargoRoutes.post("/:id/location", requirePermission("cargo.manage"), asyncRoute(
   if (!id || !data) return;
   const before = await prisma.cargoItem.findUnique({ where: { id } });
   if (!before) { res.status(404).json({ error: "Cargo item not found" }); return; }
-  const updated = await prisma.cargoItem.update({ where: { id }, data });
+  const coordinates = parseLegacyCoordinates(data.location);
+  if (coordinates && data.eventId) {
+    const recorded = await recordLocation("cargo", id, {
+      ...coordinates,
+      ...(data.observedAt ? { observedAt: data.observedAt } : {}),
+      ...(data.accuracyMeters !== undefined ? { accuracyMeters: data.accuracyMeters } : {}),
+      ...(data.altitudeMeters !== undefined ? { altitudeMeters: data.altitudeMeters } : {}),
+      source: data.source ?? "MANUAL",
+      eventId: data.eventId,
+    });
+    const updated = await prisma.cargoItem.findUnique({ where: { id } });
+    if (!updated) { res.status(404).json({ error: "Cargo item not found" }); return; }
+    if (!recorded.replayed) {
+      broadcastCargoUpdate({ id, location: formatLegacyLocation(recorded.location), currentLocation: recorded.location, status: updated.status, updatedAt: updated.updatedAt });
+    }
+    res.json(updated);
+    return;
+  }
+  const updated = await prisma.cargoItem.update({ where: { id }, data: { location: data.location, currentLocationId: null } });
   broadcastCargoUpdate({
     id: updated.id,
     location: updated.location,
+    currentLocation: null,
     status: updated.status,
     updatedAt: updated.updatedAt,
   });
@@ -293,10 +352,11 @@ alertRoutes.get("/", requirePermission("emergency.read"), asyncRoute(async (req,
   const pagination = parsePagination(req, res);
   if (!pagination) return;
   const [alerts, total] = await Promise.all([
-    prisma.emergencyAlert.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.emergencyAlert.findMany({ orderBy: { createdAt: "desc" }, include: { currentLocation: true } }),
     prisma.emergencyAlert.count(),
   ]);
   const data = sortAlertsBySeverity(alerts)
+    .map((alert) => filterStructuredLocation(req, { ...alert, currentLocation: alert.currentLocation ? serializeLocation(alert.currentLocation) : null }))
     .slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize);
   sendPage(res, data, total, pagination.page, pagination.pageSize);
 }));
@@ -304,9 +364,30 @@ alertRoutes.post("/", requirePermission("emergency.create"), asyncRoute(async (r
   const data = parseBody(alertSchema, req, res);
   const user = (req as AuthenticatedRequest).user;
   if (!data) return;
-  const alert = await prisma.emergencyAlert.create({ data: { ...data, createdById: user.id } });
+  const { locationCoordinates, ...alertData } = data;
+  if (locationCoordinates?.eventId) {
+    const existing = await prisma.location.findUnique({
+      where: { eventId: locationCoordinates.eventId },
+      include: { emergencyHistory: { include: { emergencyAlert: { include: { currentLocation: true } } } } },
+    });
+    if (existing) {
+      const priorAlert = existing.emergencyHistory[0]?.emergencyAlert;
+      if (!priorAlert) { res.status(409).json({ error: "Event ID has already been used for another entity" }); return; }
+      res.status(200).json(filterStructuredLocation(req, { ...priorAlert, currentLocation: priorAlert.currentLocation ? serializeLocation(priorAlert.currentLocation) : null }));
+      return;
+    }
+  }
+  const created = await prisma.$transaction(async (tx) => {
+    const alert = await tx.emergencyAlert.create({ data: { ...alertData, createdById: user.id } });
+    if (locationCoordinates) {
+      await createLocationInTransaction(tx, "emergency", alert.id, { ...locationCoordinates, expeditionId: alert.expeditionId });
+    }
+    return alert;
+  });
+  const alert = await prisma.emergencyAlert.findUnique({ where: { id: created.id }, include: { currentLocation: true } });
+  if (!alert) { res.status(500).json({ error: "Unable to load created alert" }); return; }
   broadcastAlertNew(alert);
-  res.status(201).json(alert);
+  res.status(201).json(filterStructuredLocation(req, { ...alert, currentLocation: alert.currentLocation ? serializeLocation(alert.currentLocation) : null }));
 }));
 alertRoutes.patch("/:id/resolve", requirePermission("emergency.resolve"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
@@ -318,7 +399,8 @@ alertRoutes.patch("/:id/resolve", requirePermission("emergency.resolve"), asyncR
 alertRoutes.get("/:id", requirePermission("emergency.read"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
-  const data = await prisma.emergencyAlert.findUnique({ where: { id } });
+  const row = await prisma.emergencyAlert.findUnique({ where: { id }, include: { currentLocation: true } });
+  const data = row ? filterStructuredLocation(req, { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null }) : null;
   if (!data) { res.status(404).json({ error: "Emergency alert not found" }); return; }
   res.json(data);
 }));
