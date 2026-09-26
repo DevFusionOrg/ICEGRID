@@ -10,7 +10,7 @@ const STATUS_OPTIONS: Array<CargoStatus | "ALL"> = ["ALL", "PLANNED", "IN_TRANSI
 const statusColors: Record<CargoStatus, string> = { PLANNED: "#64748b", IN_TRANSIT: "#0284c7", AT_DESTINATION: "#7c3aed", RECEIVED: "#16a34a", LOST: "#dc2626" };
 const formatStatus = (value: string) => value.replace(/_/g, " ");
 export function CargoTrackingPage() {
-  const token = useAuthStore((state) => state.token);
+  const { token, user } = useAuthStore();
   const queryClient = useQueryClient();
   const { socket, status: realtimeStatus } = useRealtime();
   const [status, setStatus] = useState<CargoStatus | "ALL">("ALL");
@@ -25,8 +25,8 @@ export function CargoTrackingPage() {
   useExpeditionRoom(expedition === "ALL" ? null : expedition);
   const submitLocation = async () => {
     if (!locationItem || !location.trim()) return;
-    await updateCargoLocation(token!, locationItem, location.trim());
-    setLocationMessage(navigator.onLine ? "Location sent." : "Location queued for sync.");
+    const result = await updateCargoLocation(token!, locationItem, location.trim(), user!.id);
+    setLocationMessage(typeof result === "object" && result !== null && "queued" in result ? "Location queued for sync." : "Location sent.");
     setLocation("");
   };
 

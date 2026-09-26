@@ -2,6 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/auth";
 import { realtimeSocketManager, type ICEGRIDSocket } from "../lib/realtimeClient";
+import { queueCounts } from "../lib/offlineQueue";
+import { registerOfflineSyncTrigger, retryFailedOfflineQueue, syncOfflineQueue } from "../lib/offlineSync";
+import { useOfflineSyncStore } from "../stores/offlineSync";
 
 export type RealtimeStatus = "disconnected" | "connecting" | "connected" | "reconnecting" | "error";
 
@@ -9,16 +12,53 @@ type RealtimeContextValue = {
   socket: ICEGRIDSocket | null;
   status: RealtimeStatus;
   subscribeToExpedition: (expeditionId: string) => () => void;
+  syncNow: (retryFailed?: boolean) => Promise<void>;
 };
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   const [socket, setSocket] = useState<ICEGRIDSocket | null>(null);
   const [status, setStatus] = useState<RealtimeStatus>(token ? "connecting" : "disconnected");
   const roomReferences = useRef(new Map<string, number>());
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setOfflineStatus = useOfflineSyncStore((state) => state.setStatus);
+
+  const syncNow = useCallback(async (retryFailed = false) => {
+    if (!token || !user) return;
+    const counts = await queueCounts(user.id);
+    if (!navigator.onLine) {
+      setOfflineStatus("OFFLINE", counts);
+      return;
+    }
+    if (counts.pending === 0 && counts.failed === 0) {
+      setOfflineStatus(counts.unassignedFailed ? "SYNC_ERROR" : "ONLINE", counts);
+      return;
+    }
+
+    setOfflineStatus("SYNCING", counts);
+    try {
+      const result = retryFailed
+        ? await retryFailedOfflineQueue(user.id, token)
+        : await syncOfflineQueue(user.id, token);
+      void queryClient.invalidateQueries({ queryKey: ["cargo"] });
+      void queryClient.invalidateQueries({ queryKey: ["alerts"] });
+      void queryClient.invalidateQueries({ queryKey: ["personnel"] });
+      setOfflineStatus(
+        result.networkUnavailable ? "SERVER_UNREACHABLE" : result.failed || result.unassignedFailed ? "SYNC_ERROR" : result.nextRetryAt !== null ? "RETRY_SCHEDULED" : result.syncedThisRun ? "SYNC_COMPLETE" : "ONLINE",
+        result,
+      );
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+      if (result.nextRetryAt !== null && result.pending > 0) {
+        retryTimer.current = setTimeout(() => { void syncNow(); }, Math.max(0, result.nextRetryAt - Date.now()));
+      }
+    } catch {
+      setOfflineStatus("SERVER_UNREACHABLE", await queueCounts(user.id));
+    }
+  }, [queryClient, setOfflineStatus, token, user]);
 
   useEffect(() => {
     if (!token) {
@@ -71,6 +111,33 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     };
   }, [queryClient, token]);
 
+  useEffect(() => {
+    if (!token || !user) {
+      registerOfflineSyncTrigger(null);
+      return;
+    }
+    const trigger = () => { void syncNow(); };
+    const handleOffline = () => { void queueCounts(user.id).then((counts) => setOfflineStatus("OFFLINE", counts)); };
+    const handleQueueChanged = () => {
+      if (navigator.onLine) trigger();
+      else handleOffline();
+    };
+    registerOfflineSyncTrigger(trigger);
+    window.addEventListener("online", trigger);
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("ncpors:offline-queue-changed", handleQueueChanged);
+    socket?.on("connect", trigger);
+    trigger();
+    return () => {
+      registerOfflineSyncTrigger(null);
+      window.removeEventListener("online", trigger);
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("ncpors:offline-queue-changed", handleQueueChanged);
+      socket?.off("connect", trigger);
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    };
+  }, [setOfflineStatus, socket, syncNow, token, user]);
+
   const subscribeToExpedition = useCallback((expeditionId: string) => {
     const referenceCount = roomReferences.current.get(expeditionId) ?? 0;
     roomReferences.current.set(expeditionId, referenceCount + 1);
@@ -87,7 +154,7 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
     };
   }, [socket]);
 
-  return <RealtimeContext.Provider value={{ socket, status, subscribeToExpedition }}>{children}</RealtimeContext.Provider>;
+  return <RealtimeContext.Provider value={{ socket, status, subscribeToExpedition, syncNow }}>{children}</RealtimeContext.Provider>;
 }
 
 export function useRealtime() {

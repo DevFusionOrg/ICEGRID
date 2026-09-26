@@ -233,4 +233,47 @@ describe("location API authorization", () => {
     expect(response.body.id).toBe("alert-prior");
     expect(database.$transaction).not.toHaveBeenCalled();
   });
+
+  it("returns the original SOS for a repeated offline operation ID without creating another alert", async () => {
+    const operationId = "965f92cf-7dc2-4c32-a6e1-64612944c8e3";
+    const createdAlert = {
+      id: "alert-operation-1", operationId, createdById: "user-1", expeditionId: "exp-1", title: "SOS",
+      message: "Offline SOS", severity: "CRITICAL", status: "OPEN", location: null, resolvedAt: null,
+      createdAt: new Date(), updatedAt: new Date(), currentLocation: null,
+    };
+    const tx = transaction();
+    tx.emergencyAlert.create.mockResolvedValue(createdAlert as never);
+    database.$transaction.mockImplementation(async (operation: (transaction: unknown) => unknown) => operation(tx));
+    vi.mocked(database.emergencyAlert.findUnique)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(createdAlert as never)
+      .mockResolvedValueOnce(createdAlert as never);
+    const postSos = () => request(app).post("/api/alerts").set("Authorization", token("ADMIN")).send({
+      operationId, expeditionId: "exp-1", title: "SOS", message: "Offline SOS", severity: "CRITICAL", location: null,
+    });
+
+    const first = await postSos();
+    const retry = await postSos();
+
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(200);
+    expect(first.body.id).toBe("alert-operation-1");
+    expect(retry.body.id).toBe("alert-operation-1");
+    expect(tx.emergencyAlert.create).toHaveBeenCalledOnce();
+    expect(tx.emergencyAlert.create).toHaveBeenCalledWith({ data: expect.objectContaining({ operationId, createdById: "user-1" }) });
+  });
+
+  it("does not reveal an operation created by another user", async () => {
+    vi.mocked(database.emergencyAlert.findUnique).mockResolvedValue({
+      id: "alert-other", operationId: "965f92cf-7dc2-4c32-a6e1-64612944c8e3", createdById: "other-user",
+      currentLocation: null,
+    } as never);
+    const response = await request(app).post("/api/alerts").set("Authorization", token("ADMIN")).send({
+      operationId: "965f92cf-7dc2-4c32-a6e1-64612944c8e3", expeditionId: "exp-1", title: "SOS", message: "Retry", location: null,
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe("Operation ID has already been used");
+    expect(database.$transaction).not.toHaveBeenCalled();
+  });
 });

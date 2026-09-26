@@ -73,6 +73,7 @@ const inventorySchema = z.object({
 });
 
 const alertSchema = z.object({
+  operationId: z.string().uuid().optional(),
   expeditionId: idSchema,
   title: z.string().trim().min(1).max(200),
   message: z.string().trim().min(1).max(4000),
@@ -367,7 +368,21 @@ alertRoutes.post("/", requirePermission("emergency.create"), asyncRoute(async (r
   const data = parseBody(alertSchema, req, res);
   const user = (req as AuthenticatedRequest).user;
   if (!data) return;
-  const { locationCoordinates, ...alertData } = data;
+  const { operationId, locationCoordinates, ...alertData } = data;
+  const loadExistingOperation = async () => operationId
+    ? prisma.emergencyAlert.findUnique({ where: { operationId }, include: { currentLocation: true } })
+    : null;
+  const returnExistingOperation = async () => {
+    const existing = await loadExistingOperation();
+    if (!existing) return false;
+    if (existing.createdById !== user.id) {
+      res.status(409).json({ error: "Operation ID has already been used" });
+      return true;
+    }
+    res.status(200).json(filterStructuredLocation(req, { ...existing, currentLocation: existing.currentLocation ? serializeLocation(existing.currentLocation) : null }));
+    return true;
+  };
+  if (await returnExistingOperation()) return;
   if (locationCoordinates?.eventId) {
     const existing = await prisma.location.findUnique({
       where: { eventId: locationCoordinates.eventId },
@@ -380,15 +395,23 @@ alertRoutes.post("/", requirePermission("emergency.create"), asyncRoute(async (r
       return;
     }
   }
-  const created = await prisma.$transaction(async (tx) => {
-    const alert = await tx.emergencyAlert.create({ data: { ...alertData, createdById: user.id } });
-    let location: import("../modules/locations/service.js").LocationPoint | undefined;
-    if (locationCoordinates) {
-      const result = await createLocationInTransaction(tx, "emergency", alert.id, { ...locationCoordinates, expeditionId: alert.expeditionId });
-      location = result.location;
+  let created: { alert: Awaited<ReturnType<typeof prisma.emergencyAlert.create>>; location?: import("../modules/locations/service.js").LocationPoint };
+  try {
+    created = await prisma.$transaction(async (tx) => {
+      const alert = await tx.emergencyAlert.create({ data: { ...alertData, operationId, createdById: user.id } });
+      let location: import("../modules/locations/service.js").LocationPoint | undefined;
+      if (locationCoordinates) {
+        const result = await createLocationInTransaction(tx, "emergency", alert.id, { ...locationCoordinates, expeditionId: alert.expeditionId });
+        location = result.location;
+      }
+      return { alert, location };
+    });
+  } catch (error) {
+    if (operationId && typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      if (await returnExistingOperation()) return;
     }
-    return { alert, location };
-  });
+    throw error;
+  }
   const alert = await prisma.emergencyAlert.findUnique({ where: { id: created.alert.id }, include: { currentLocation: true } });
   if (!alert) { res.status(500).json({ error: "Unable to load created alert" }); return; }
   if (created.location) {
@@ -414,7 +437,7 @@ alertRoutes.get("/:id", requirePermission("emergency.read"), asyncRoute(async (r
 }));
 alertRoutes.patch("/:id", requirePermission("emergency.manage"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
-  const data = parseBody(alertSchema.partial(), req, res);
+  const data = parseBody(alertSchema.omit({ operationId: true }).partial(), req, res);
   if (!id || !data) return;
   res.json(await prisma.emergencyAlert.update({ where: { id }, data }));
 }));

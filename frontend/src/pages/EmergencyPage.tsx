@@ -46,7 +46,9 @@ export function EmergencyPage() {
   const resolveMutation = useMutation({ mutationFn: (id: string) => resolveAlert(token!, id), onSuccess: (updated) => setAlerts((current) => current.map((alert) => alert.id === updated.id ? updated : alert)) });
   const sosMutation = useMutation({
     mutationFn: async (reportedLocation: { location: string | null; coordinates?: LocationInput }) => {
+      const operationId = createLocationEventId();
       const body = {
+        operationId,
         expeditionId: expeditions.data?.data[0]?.id ?? "",
         title: "SOS from field personnel",
         message: sosMessage || "Immediate assistance requested.",
@@ -55,10 +57,17 @@ export function EmergencyPage() {
         ...(reportedLocation.coordinates ? { locationCoordinates: reportedLocation.coordinates } : {}),
       };
       if (!navigator.onLine) {
-        await enqueueRequest({ path: "/alerts", method: "POST", body, token: token! });
+        if (!user?.id) throw new Error("An authenticated user is required to queue an SOS");
+        await enqueueRequest({ path: "/alerts", method: "POST", body, userId: user.id, operationId });
         return null;
       }
-      return createAlert(token!, body);
+      try {
+        return await createAlert(token!, body);
+      } catch (error) {
+        if (!(error instanceof TypeError) || !user?.id) throw error;
+        await enqueueRequest({ path: "/alerts", method: "POST", body, userId: user.id, operationId });
+        return null;
+      }
     },
     onSuccess: (created) => { if (created) setAlerts((current) => [created, ...current]); setSosMessage(""); setSosError(""); },
     onError: (error) => setSosError(error instanceof Error ? error.message : "Unable to raise SOS"),
