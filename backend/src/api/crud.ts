@@ -4,7 +4,7 @@ import type { AuthenticatedRequest } from "../auth/middleware.js";
 import { requirePermission } from "../auth/middleware.js";
 import { hasPermission } from "../auth/roles.js";
 import { prisma } from "../db/prisma.js";
-import { broadcastAlertNew, broadcastCargoUpdate } from "../realtime.js";
+import { broadcastAlertNew, broadcastCargoUpdate, broadcastLocationUpdated } from "../realtime.js";
 import { createLocationInTransaction, formatLegacyLocation, serializeLocation, recordLocation } from "../modules/locations/service.js";
 import { locationInputSchema, parseLegacyCoordinates } from "../modules/locations/validation.js";
 
@@ -275,10 +275,11 @@ createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {
   delete: async (id) => { await prisma.cargoItem.delete({ where: { id } }); },
   notifyUpdate: (before, after) => {
     const previous = before as { location: string | null; status: string };
-    const current = after as { id: string; location: string | null; status: string; updatedAt: Date; currentLocation: import("../modules/locations/service.js").LocationPoint | null };
+    const current = after as { id: string; expeditionId: string; location: string | null; status: string; updatedAt: Date; currentLocation: import("../modules/locations/service.js").LocationPoint | null };
     if (previous.location !== current.location || previous.status !== current.status) {
       broadcastCargoUpdate({
         id: current.id,
+        expeditionId: current.expeditionId,
         location: current.location,
         currentLocation: current.currentLocation,
         status: current.status,
@@ -316,7 +317,8 @@ cargoRoutes.post("/:id/location", requirePermission("cargo.manage"), asyncRoute(
     const updated = await prisma.cargoItem.findUnique({ where: { id } });
     if (!updated) { res.status(404).json({ error: "Cargo item not found" }); return; }
     if (!recorded.replayed) {
-      broadcastCargoUpdate({ id, location: formatLegacyLocation(recorded.location), currentLocation: recorded.location, status: updated.status, updatedAt: updated.updatedAt });
+      broadcastLocationUpdated({ entityType: "cargo", entityId: id, expeditionId: updated.expeditionId, location: recorded.location });
+      broadcastCargoUpdate({ id, expeditionId: updated.expeditionId, location: formatLegacyLocation(recorded.location), currentLocation: recorded.location, status: updated.status, updatedAt: updated.updatedAt });
     }
     res.json(updated);
     return;
@@ -324,6 +326,7 @@ cargoRoutes.post("/:id/location", requirePermission("cargo.manage"), asyncRoute(
   const updated = await prisma.cargoItem.update({ where: { id }, data: { location: data.location, currentLocationId: null } });
   broadcastCargoUpdate({
     id: updated.id,
+    expeditionId: updated.expeditionId,
     location: updated.location,
     currentLocation: null,
     status: updated.status,
@@ -379,13 +382,18 @@ alertRoutes.post("/", requirePermission("emergency.create"), asyncRoute(async (r
   }
   const created = await prisma.$transaction(async (tx) => {
     const alert = await tx.emergencyAlert.create({ data: { ...alertData, createdById: user.id } });
+    let location: import("../modules/locations/service.js").LocationPoint | undefined;
     if (locationCoordinates) {
-      await createLocationInTransaction(tx, "emergency", alert.id, { ...locationCoordinates, expeditionId: alert.expeditionId });
+      const result = await createLocationInTransaction(tx, "emergency", alert.id, { ...locationCoordinates, expeditionId: alert.expeditionId });
+      location = result.location;
     }
-    return alert;
+    return { alert, location };
   });
-  const alert = await prisma.emergencyAlert.findUnique({ where: { id: created.id }, include: { currentLocation: true } });
+  const alert = await prisma.emergencyAlert.findUnique({ where: { id: created.alert.id }, include: { currentLocation: true } });
   if (!alert) { res.status(500).json({ error: "Unable to load created alert" }); return; }
+  if (created.location) {
+    broadcastLocationUpdated({ entityType: "emergency", entityId: alert.id, expeditionId: alert.expeditionId, location: created.location });
+  }
   broadcastAlertNew(alert);
   res.status(201).json(filterStructuredLocation(req, { ...alert, currentLocation: alert.currentLocation ? serializeLocation(alert.currentLocation) : null }));
 }));

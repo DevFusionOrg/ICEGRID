@@ -1,19 +1,18 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { io } from "socket.io-client";
 import { Filter, MapPinned, Radio, Search } from "lucide-react";
 import { CargoItem, CargoStatus, Expedition, getCollection, updateCargoLocation } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
 import { PolarMap } from "../components/PolarMap";
+import { useExpeditionRoom, useRealtime } from "../components/RealtimeProvider";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
-const SOCKET_URL = API_URL.replace(/\/api\/?$/, "");
 const STATUS_OPTIONS: Array<CargoStatus | "ALL"> = ["ALL", "PLANNED", "IN_TRANSIT", "AT_DESTINATION", "RECEIVED", "LOST"];
 const statusColors: Record<CargoStatus, string> = { PLANNED: "#64748b", IN_TRANSIT: "#0284c7", AT_DESTINATION: "#7c3aed", RECEIVED: "#16a34a", LOST: "#dc2626" };
 const formatStatus = (value: string) => value.replace(/_/g, " ");
 export function CargoTrackingPage() {
   const token = useAuthStore((state) => state.token);
-  const [cargo, setCargo] = useState<CargoItem[]>([]);
+  const queryClient = useQueryClient();
+  const { socket, status: realtimeStatus } = useRealtime();
   const [status, setStatus] = useState<CargoStatus | "ALL">("ALL");
   const [expedition, setExpedition] = useState("ALL");
   const [search, setSearch] = useState("");
@@ -23,6 +22,7 @@ export function CargoTrackingPage() {
   const [locationMessage, setLocationMessage] = useState("");
   const expeditions = useQuery({ queryKey: ["expeditions", "cargo-filter"], queryFn: () => getCollection<Expedition>("/expeditions?pageSize=100", token!), enabled: Boolean(token) });
   const cargoQuery = useQuery({ queryKey: ["cargo", "tracking"], queryFn: () => getCollection<CargoItem>("/cargo-items?pageSize=100", token!), enabled: Boolean(token) });
+  useExpeditionRoom(expedition === "ALL" ? null : expedition);
   const submitLocation = async () => {
     if (!locationItem || !location.trim()) return;
     await updateCargoLocation(token!, locationItem, location.trim());
@@ -30,20 +30,23 @@ export function CargoTrackingPage() {
     setLocation("");
   };
 
-  useEffect(() => { if (cargoQuery.data?.data) setCargo(cargoQuery.data.data); }, [cargoQuery.data]);
   useEffect(() => {
-    if (!token) return;
-    const socket = io(SOCKET_URL, { auth: { token } });
-    socket.on("cargo:update", (update: Pick<CargoItem, "id" | "location" | "status" | "updatedAt" | "currentLocation">) => {
-      setCargo((current) => current.map((item) => item.id === update.id ? { ...item, ...update } : item));
-    });
-    return () => { socket.disconnect(); };
-  }, [token]);
+    if (!socket) return;
+    const updateCargo = (update: Pick<CargoItem, "id" | "expeditionId" | "location" | "status" | "updatedAt" | "currentLocation">) => {
+      queryClient.setQueryData<{ data: CargoItem[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(["cargo", "tracking"], (current) =>
+        current ? { ...current, data: current.data.map((item) => item.id === update.id ? { ...item, ...update } : item) } : current,
+      );
+    };
+    socket.on("cargo.updated", updateCargo);
+    return () => { socket.off("cargo.updated", updateCargo); };
+  }, [queryClient, socket]);
+
+  const cargo = cargoQuery.data?.data ?? [];
 
   const filteredCargo = useMemo(() => cargo.filter((item) => (status === "ALL" || item.status === status) && (expedition === "ALL" || item.expeditionId === expedition) && (!search || `${item.name} ${item.trackingCode}`.toLowerCase().includes(search.toLowerCase()))), [cargo, expedition, search, status]);
 
   return <div className="space-y-6">
-    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-wider text-sky-600">Live operations</p><h2 className="mt-2 text-3xl font-bold">Cargo tracking</h2><p className="mt-2 text-sm text-slate-500">Polar-projected positions from field teams.</p></div><div className="flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><Radio className="h-4 w-4" />Realtime connected</div></div>
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-wider text-sky-600">Live operations</p><h2 className="mt-2 text-3xl font-bold">Cargo tracking</h2><p className="mt-2 text-sm text-slate-500">Polar-projected positions from field teams.</p></div><div className={`flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${realtimeStatus === "connected" && expedition !== "ALL" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}><Radio className="h-4 w-4" />{realtimeStatus === "connected" && expedition === "ALL" ? "Select expedition for live updates" : realtimeStatus === "connected" ? "Realtime connected" : realtimeStatus === "reconnecting" || realtimeStatus === "connecting" ? "Reconnecting" : "Realtime unavailable"}</div></div>
     <div className="grid gap-6 xl:grid-cols-[280px_1fr]">
       <aside className="space-y-5 rounded-2xl bg-white p-5 shadow-sm"><div className="flex items-center gap-2 font-semibold"><Filter className="h-4 w-4 text-sky-600" />Filters</div>
         <label className="block text-sm font-medium text-slate-700">Search<input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Name or tracking code" value={search} onChange={(event) => setSearch(event.target.value)} /></label>

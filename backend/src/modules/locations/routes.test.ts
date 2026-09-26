@@ -1,6 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { signAuthToken } from "../../auth/jwt.js";
+import * as realtime from "../../realtime.js";
 
 const database = vi.hoisted(() => ({
   personnel: { findUnique: vi.fn() },
@@ -42,6 +43,7 @@ function transaction() {
 describe("location API authorization", () => {
   beforeEach(() => {
     process.env.JWT_SECRET = "location-routes-test-secret";
+    vi.restoreAllMocks();
     vi.clearAllMocks();
   });
 
@@ -74,6 +76,7 @@ describe("location API authorization", () => {
   });
 
   it("allows an authorized role to record a location", async () => {
+    const locationBroadcast = vi.spyOn(realtime, "broadcastLocationUpdated");
     const tx = transaction();
     const eventId = "3d0e2547-62ca-4339-b6b2-6c0df52a2260";
     tx.location.findUnique.mockResolvedValueOnce(null).mockResolvedValue({ ...point, id: "loc-new", eventId });
@@ -95,6 +98,10 @@ describe("location API authorization", () => {
     expect(first.body.data.expeditionId).toBe("exp-1");
     expect(tx.location.create).toHaveBeenCalledOnce();
     expect(tx.personnelLocationHistory.create).toHaveBeenCalledOnce();
+    expect(locationBroadcast).toHaveBeenCalledWith(expect.objectContaining({
+      entityType: "personnel", entityId: "person-1", expeditionId: "exp-1",
+      location: expect.objectContaining({ latitude: 78.12345678 }),
+    }));
   });
 
   it("denies FIELD_PERSONNEL location updates before persistence", async () => {
@@ -124,6 +131,7 @@ describe("location API authorization", () => {
   });
 
   it("preserves legacy coordinate retries without creating structured history when no event ID is supplied", async () => {
+    const locationBroadcast = vi.spyOn(realtime, "broadcastLocationUpdated");
     const before = { id: "cargo-1", location: null, currentLocationId: "old-location", status: "IN_TRANSIT", updatedAt: new Date() };
     const after = { ...before, location: "-77.85,166.67", currentLocationId: null };
     vi.mocked(database.cargoItem.findUnique).mockResolvedValue(before as never);
@@ -140,6 +148,7 @@ describe("location API authorization", () => {
     expect(database.$transaction).not.toHaveBeenCalled();
     expect(database.location.create).not.toHaveBeenCalled();
     expect(database.cargoLocationHistory.create).not.toHaveBeenCalled();
+    expect(locationBroadcast).not.toHaveBeenCalled();
   });
 
   it("keeps legacy cargo requests with a stable event ID idempotent", async () => {

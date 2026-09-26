@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { requirePermission } from "../../auth/middleware.js";
 import type { Permission } from "../../auth/roles.js";
-import { broadcastCargoUpdate } from "../../realtime.js";
+import { broadcastCargoUpdate, broadcastLocationUpdated } from "../../realtime.js";
 import { prisma } from "../../db/prisma.js";
 import { formatLegacyLocation, getCurrentLocation, getLocationHistory, LocationError, recordLocation } from "./service.js";
 import { locationEntityTypeSchema, locationInputSchema } from "./validation.js";
@@ -86,10 +86,13 @@ router.post("/:entityType/:entityId", authorizeLocation("update"), asyncRoute(as
     return;
   }
   const result = await recordLocation(entityType, entityId, input.data);
+  if (!result.replayed) {
+    broadcastLocationUpdated({ entityType, entityId, expeditionId: result.location.expeditionId!, location: result.location });
+  }
   if (entityType === "cargo" && !result.replayed) {
-    const cargo = await prisma.cargoItem.findUnique({ where: { id: entityId }, select: { status: true, updatedAt: true } });
+    const cargo = await prisma.cargoItem.findUnique({ where: { id: entityId }, select: { expeditionId: true, status: true, updatedAt: true } });
     if (cargo) {
-      broadcastCargoUpdate({ id: entityId, location: formatLegacyLocation(result.location), status: cargo.status, updatedAt: cargo.updatedAt });
+      broadcastCargoUpdate({ id: entityId, expeditionId: cargo.expeditionId, location: formatLegacyLocation(result.location), currentLocation: result.location, status: cargo.status, updatedAt: cargo.updatedAt });
     }
   }
   response.status(result.replayed ? 200 : 201).json({ data: result.location });
