@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { AlertTriangle, Boxes, Compass, LayoutDashboard, LogOut, Package, Snowflake, Users } from "lucide-react";
 import { getCollection } from "../lib/api";
 import { roleLabels, useAuthStore } from "../stores/auth";
+import { OfflineStatus } from "./OfflineStatus";
 
 const navigation = [
   { label: "Dashboard", path: "/", icon: LayoutDashboard },
@@ -37,7 +38,7 @@ export function AppShell() {
       <div className="lg:pl-64">
         <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-6 lg:px-10">
           <div><p className="text-sm text-slate-500">Operations overview</p><h1 className="text-xl font-bold">Polar mission control</h1></div>
-          <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user?.name}</p><p className="text-xs text-slate-500">{user?.email}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">{user ? roleLabels[user.role] : ""}</span><button className="text-slate-500 lg:hidden" onClick={logout} aria-label="Sign out"><LogOut className="h-5 w-5" /></button></div>
+          <div className="flex items-center gap-3"><OfflineStatus /><div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user?.name}</p><p className="text-xs text-slate-500">{user?.email}</p></div><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">{user ? roleLabels[user.role] : ""}</span><button className="text-slate-500 lg:hidden" onClick={logout} aria-label="Sign out"><LogOut className="h-5 w-5" /></button></div>
         </header>
         <main className="p-6 lg:p-10"><Outlet context={{ expeditionCount: data?.pagination.total ?? 0 }} /></main>
       </div>

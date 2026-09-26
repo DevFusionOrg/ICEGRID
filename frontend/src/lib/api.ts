@@ -1,6 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 import { enqueueRequest } from "./offlineQueue";
 import { createLocationEventId } from "./locationEventId";
+import { notifyApiReachable } from "./offlineSync";
 
 export type Role = "ADMIN" | "COORDINATOR" | "FIELD_PERSONNEL" | "LOGISTICS_OFFICER";
 
@@ -107,6 +108,7 @@ async function request<T>(path: string, options: RequestInit = {}) {
   });
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(body.error ?? "Request failed");
+  notifyApiReachable();
   return body;
 }
 
@@ -123,7 +125,7 @@ export function getCollection<T>(path: string, token: string) {
   });
 }
 
-export function createAlert(token: string, data: Pick<EmergencyAlert, "expeditionId" | "title" | "message" | "severity" | "location"> & { locationCoordinates?: LocationInput }) {
+export function createAlert(token: string, data: Pick<EmergencyAlert, "expeditionId" | "title" | "message" | "severity" | "location"> & { operationId?: string; locationCoordinates?: LocationInput }) {
   return request<EmergencyAlert>("/alerts", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
 }
 
@@ -151,7 +153,7 @@ export function updateInventoryItem(token: string, id: string, data: Record<stri
   return request<InventoryItem>(`/inventory-items/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
 }
 
-export async function updateCargoLocation(token: string, id: string, location: string) {
+export async function updateCargoLocation(token: string, id: string, location: string, userId: string) {
   const match = location.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
   if (!match) throw new Error("Enter a latitude,longitude coordinate pair");
   const latitude = Number(match[1]);
@@ -159,19 +161,26 @@ export async function updateCargoLocation(token: string, id: string, location: s
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
     throw new Error("Coordinates are outside valid latitude/longitude ranges");
   }
+  const eventId = createLocationEventId();
   const body: LocationInput = {
     latitude,
     longitude,
     observedAt: new Date().toISOString(),
     source: "MANUAL",
-    eventId: createLocationEventId(),
+    eventId,
   };
   const path = `/locations/cargo/${id}`;
   if (!navigator.onLine) {
-    await enqueueRequest({ path, method: "POST", body, token });
+    await enqueueRequest({ path, method: "POST", body, userId, operationId: eventId });
     return { queued: true };
   }
-  return request<{ data: LocationPoint }>(path, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  try {
+    return await request<{ data: LocationPoint }>(path, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    await enqueueRequest({ path, method: "POST", body, userId, operationId: eventId });
+    return { queued: true };
+  }
 }
 
 export function getLocation(token: string, entityType: "personnel" | "cargo" | "emergency", entityId: string) {

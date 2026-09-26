@@ -114,6 +114,7 @@ model EmergencyAlert {
   message        String
   severity       AlertSeverity @default(MEDIUM)
   status         AlertStatus   @default(OPEN)
+  operationId    String?       @unique
   location       String?
   currentLocationId String? @unique
   resolvedAt     DateTime?
