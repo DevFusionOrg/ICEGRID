@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import { syncOfflineQueue } from "./lib/offlineSync";
+import { RealtimeProvider } from "./components/RealtimeProvider";
 
 const queryClient = new QueryClient();
 if ("serviceWorker" in navigator) {
@@ -13,6 +14,6 @@ window.addEventListener("online", () => { void syncOfflineQueue(); });
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}><App /></QueryClientProvider>
+    <QueryClientProvider client={queryClient}><RealtimeProvider><App /></RealtimeProvider></QueryClientProvider>
   </StrictMode>
 );
