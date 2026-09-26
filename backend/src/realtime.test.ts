@@ -21,7 +21,7 @@ describe("realtime server", () => {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Server did not bind");
     const client = connect(`http://localhost:${address.port}`, {
-      auth: { token: signAuthToken({ sub: "u1", role: "FIELD_PERSONNEL" }) },
+      auth: { token: signAuthToken({ sub: "u1", role: "ADMIN" }) },
     });
     await new Promise<void>((resolve, reject) => {
       client.once("connect", () => {
@@ -29,10 +29,43 @@ describe("realtime server", () => {
         client.once("cargo:update", (update) => {
           expect(update.id).toBe("cargo-1");
           expect(update.location).toBe("South Pole");
+          expect(update.currentLocation?.latitude).toBe(78.12345678);
           client.close();
           resolve();
         });
-        broadcastCargoUpdate({ id: "cargo-1", location: "South Pole", status: "IN_TRANSIT", updatedAt: new Date() });
+        broadcastCargoUpdate({
+          id: "cargo-1", location: "South Pole", status: "IN_TRANSIT", updatedAt: new Date(),
+          currentLocation: {
+            id: "loc-1", latitude: 78.12345678, longitude: -12.45678901, observedAt: new Date(),
+            accuracyMeters: null, altitudeMeters: null, source: "GPS", eventId: "event-1", expeditionId: "exp-1",
+            createdAt: new Date(), updatedAt: new Date(),
+          },
+        });
+      });
+      client.once("connect_error", (error) => { client.close(); reject(error); });
+    });
+  });
+
+  it("keeps cargo status updates but redacts coordinates from roles without locations.read", async () => {
+    process.env.JWT_SECRET = "test-secret";
+    const server = createServer();
+    createRealtimeServer(server);
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Server did not bind");
+    const client = connect(`http://localhost:${address.port}`, { auth: { token: signAuthToken({ sub: "field", role: "FIELD_PERSONNEL" }) } });
+    await new Promise<void>((resolve, reject) => {
+      client.once("connect", () => {
+        client.once("cargo:update", (update) => {
+          expect(update.id).toBe("cargo-2");
+          expect(update.status).toBe("IN_TRANSIT");
+          expect(update.location).toBeNull();
+          expect(update.currentLocation).toBeNull();
+          client.close();
+          resolve();
+        });
+        broadcastCargoUpdate({ id: "cargo-2", location: "-77.85,166.67", status: "IN_TRANSIT", updatedAt: new Date() });
       });
       client.once("connect_error", (error) => { client.close(); reject(error); });
     });

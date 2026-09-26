@@ -1,10 +1,24 @@
 import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import { verifyAuthToken } from "./auth/jwt.js";
+import { hasPermission, USER_ROLES } from "./auth/roles.js";
 
 export type CargoUpdate = {
   id: string;
   location: string | null;
+  currentLocation?: {
+    id: string;
+    latitude: number;
+    longitude: number;
+    observedAt: Date;
+    accuracyMeters: number | null;
+    altitudeMeters: number | null;
+    source: string;
+    eventId: string | null;
+    expeditionId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  } | null;
   status: string;
   updatedAt: Date;
 };
@@ -48,7 +62,11 @@ export function createRealtimeServer(httpServer: HttpServer) {
 }
 
 export function broadcastCargoUpdate(update: CargoUpdate) {
-  io?.emit("cargo:update", update);
+  if (!io) return;
+  for (const role of USER_ROLES) {
+    const roleUpdate = hasPermission(role, "locations.read") ? update : { ...update, location: null, currentLocation: null };
+    io.to(`role:${role}`).emit("cargo:update", roleUpdate);
+  }
 }
 
 export function broadcastAlertNew(update: AlertUpdate) {
