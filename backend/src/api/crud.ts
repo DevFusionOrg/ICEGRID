@@ -1,10 +1,11 @@
-import { PrismaClient } from "@prisma/client";
 import { Router, type Request, type Response } from "express";
 import { z, type ZodType } from "zod";
 import type { AuthenticatedRequest } from "../auth/middleware.js";
+import { requirePermission } from "../auth/middleware.js";
+import { prisma } from "../db/prisma.js";
 import { broadcastAlertNew, broadcastCargoUpdate } from "../realtime.js";
 
-export const prisma = new PrismaClient();
+export { prisma };
 
 const idSchema = z.string().min(1);
 const dateSchema = z.coerce.date().nullable().optional();
@@ -124,7 +125,7 @@ function sendPage(response: Response, data: unknown[], total: number, page: numb
 }
 
 export const expeditionRoutes = Router();
-expeditionRoutes.get("/", asyncRoute(async (req, res) => {
+expeditionRoutes.get("/", requirePermission("expeditions.read"), asyncRoute(async (req, res) => {
   const pagination = parsePagination(req, res);
   if (!pagination) return;
   const [data, total] = await Promise.all([
@@ -133,25 +134,25 @@ expeditionRoutes.get("/", asyncRoute(async (req, res) => {
   ]);
   sendPage(res, data, total, pagination.page, pagination.pageSize);
 }));
-expeditionRoutes.post("/", asyncRoute(async (req, res) => {
+expeditionRoutes.post("/", requirePermission("expeditions.create"), asyncRoute(async (req, res) => {
   const data = parseBody(expeditionSchema, req, res);
   if (!data) return;
   res.status(201).json(await prisma.expedition.create({ data }));
 }));
-expeditionRoutes.get("/:id", asyncRoute(async (req, res) => {
+expeditionRoutes.get("/:id", requirePermission("expeditions.read"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
   const data = await prisma.expedition.findUnique({ where: { id } });
   if (!data) { res.status(404).json({ error: "Expedition not found" }); return; }
   res.json(data);
 }));
-expeditionRoutes.patch("/:id", asyncRoute(async (req, res) => {
+expeditionRoutes.patch("/:id", requirePermission("expeditions.update"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   const data = parseBody(expeditionSchema.partial(), req, res);
   if (!id || !data) return;
   res.json(await prisma.expedition.update({ where: { id }, data }));
 }));
-expeditionRoutes.delete("/:id", asyncRoute(async (req, res) => {
+expeditionRoutes.delete("/:id", requirePermission("expeditions.delete"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
   await prisma.expedition.delete({ where: { id } });
@@ -169,28 +170,30 @@ function createSimpleCrudRoutes<T extends object>(
     update: (id: string, data: Partial<T>) => Promise<unknown>;
     delete: (id: string) => Promise<void>;
     name: string;
+    readPermission: "personnel.read" | "cargo.read" | "inventory.read";
+    managePermission: "personnel.manage" | "cargo.manage" | "inventory.manage";
     notifyUpdate?: (before: unknown, after: unknown) => void;
   },
 ) {
-  router.get("/", asyncRoute(async (req, res) => {
+  router.get("/", requirePermission(operations.readPermission), asyncRoute(async (req, res) => {
     const pagination = parsePagination(req, res);
     if (!pagination) return;
     const result = await operations.list((pagination.page - 1) * pagination.pageSize, pagination.pageSize);
     sendPage(res, result.data, result.total, pagination.page, pagination.pageSize);
   }));
-  router.post("/", asyncRoute(async (req, res) => {
+  router.post("/", requirePermission(operations.managePermission), asyncRoute(async (req, res) => {
     const data = parseBody(schema, req, res);
     if (!data) return;
     res.status(201).json(await operations.create(data));
   }));
-  router.get("/:id", asyncRoute(async (req, res) => {
+  router.get("/:id", requirePermission(operations.readPermission), asyncRoute(async (req, res) => {
     const id = parseId(req, res);
     if (!id) return;
     const data = await operations.get(id);
     if (!data) { res.status(404).json({ error: `${operations.name} not found` }); return; }
     res.json(data);
   }));
-  router.patch("/:id", asyncRoute(async (req, res) => {
+  router.patch("/:id", requirePermission(operations.managePermission), asyncRoute(async (req, res) => {
     const id = parseId(req, res);
     const data = parseBody(patchSchema, req, res);
     if (!id || !data) return;
@@ -200,7 +203,7 @@ function createSimpleCrudRoutes<T extends object>(
     operations.notifyUpdate?.(before, updated);
     res.json(updated);
   }));
-  router.delete("/:id", asyncRoute(async (req, res) => {
+  router.delete("/:id", requirePermission(operations.managePermission), asyncRoute(async (req, res) => {
     const id = parseId(req, res);
     if (!id) return;
     await operations.delete(id);
@@ -211,6 +214,8 @@ function createSimpleCrudRoutes<T extends object>(
 export const personnelRoutes = Router();
 createSimpleCrudRoutes(personnelRoutes, personnelSchema, personnelSchema.partial(), {
   name: "Personnel",
+  readPermission: "personnel.read",
+  managePermission: "personnel.manage",
   list: async (skip, take) => {
     const [data, total] = await Promise.all([prisma.personnel.findMany({ skip, take, orderBy: { createdAt: "desc" } }), prisma.personnel.count()]);
     return { data, total };
@@ -224,6 +229,8 @@ createSimpleCrudRoutes(personnelRoutes, personnelSchema, personnelSchema.partial
 export const cargoRoutes = Router();
 createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {
   name: "Cargo item",
+  readPermission: "cargo.read",
+  managePermission: "cargo.manage",
   list: async (skip, take) => {
     const [data, total] = await Promise.all([prisma.cargoItem.findMany({ skip, take, orderBy: { createdAt: "desc" } }), prisma.cargoItem.count()]);
     return { data, total };
@@ -250,7 +257,7 @@ const cargoLocationSchema = z.object({
   location: z.string().trim().min(1).max(200),
 });
 
-cargoRoutes.post("/:id/location", asyncRoute(async (req, res) => {
+cargoRoutes.post("/:id/location", requirePermission("cargo.manage"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   const data = parseBody(cargoLocationSchema, req, res);
   if (!id || !data) return;
@@ -269,6 +276,8 @@ cargoRoutes.post("/:id/location", asyncRoute(async (req, res) => {
 export const inventoryRoutes = Router();
 createSimpleCrudRoutes(inventoryRoutes, inventorySchema, inventorySchema.partial(), {
   name: "Inventory item",
+  readPermission: "inventory.read",
+  managePermission: "inventory.manage",
   list: async (skip, take) => {
     const [data, total] = await Promise.all([prisma.inventoryItem.findMany({ skip, take, orderBy: { createdAt: "desc" } }), prisma.inventoryItem.count()]);
     return { data, total };
@@ -280,7 +289,7 @@ createSimpleCrudRoutes(inventoryRoutes, inventorySchema, inventorySchema.partial
 });
 
 export const alertRoutes = Router();
-alertRoutes.get("/", asyncRoute(async (req, res) => {
+alertRoutes.get("/", requirePermission("emergency.read"), asyncRoute(async (req, res) => {
   const pagination = parsePagination(req, res);
   if (!pagination) return;
   const [alerts, total] = await Promise.all([
@@ -291,7 +300,7 @@ alertRoutes.get("/", asyncRoute(async (req, res) => {
     .slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize);
   sendPage(res, data, total, pagination.page, pagination.pageSize);
 }));
-alertRoutes.post("/", asyncRoute(async (req, res) => {
+alertRoutes.post("/", requirePermission("emergency.create"), asyncRoute(async (req, res) => {
   const data = parseBody(alertSchema, req, res);
   const user = (req as AuthenticatedRequest).user;
   if (!data) return;
@@ -299,27 +308,27 @@ alertRoutes.post("/", asyncRoute(async (req, res) => {
   broadcastAlertNew(alert);
   res.status(201).json(alert);
 }));
-alertRoutes.patch("/:id/resolve", asyncRoute(async (req, res) => {
+alertRoutes.patch("/:id/resolve", requirePermission("emergency.resolve"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
   const existing = await prisma.emergencyAlert.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: "Emergency alert not found" }); return; }
   res.json(await prisma.emergencyAlert.update({ where: { id }, data: { status: "RESOLVED", resolvedAt: new Date() } }));
 }));
-alertRoutes.get("/:id", asyncRoute(async (req, res) => {
+alertRoutes.get("/:id", requirePermission("emergency.read"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
   const data = await prisma.emergencyAlert.findUnique({ where: { id } });
   if (!data) { res.status(404).json({ error: "Emergency alert not found" }); return; }
   res.json(data);
 }));
-alertRoutes.patch("/:id", asyncRoute(async (req, res) => {
+alertRoutes.patch("/:id", requirePermission("emergency.manage"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   const data = parseBody(alertSchema.partial(), req, res);
   if (!id || !data) return;
   res.json(await prisma.emergencyAlert.update({ where: { id }, data }));
 }));
-alertRoutes.delete("/:id", asyncRoute(async (req, res) => {
+alertRoutes.delete("/:id", requirePermission("emergency.manage"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
   if (!id) return;
   await prisma.emergencyAlert.delete({ where: { id } });

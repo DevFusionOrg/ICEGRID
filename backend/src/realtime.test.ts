@@ -21,7 +21,7 @@ describe("realtime server", () => {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Server did not bind");
     const client = connect(`http://localhost:${address.port}`, {
-      auth: { token: signAuthToken({ sub: "u1", email: "field@ncpors.local", role: "FIELD_PERSONNEL" }) },
+      auth: { token: signAuthToken({ sub: "u1", role: "FIELD_PERSONNEL" }) },
     });
     await new Promise<void>((resolve, reject) => {
       client.once("connect", () => {
@@ -47,7 +47,7 @@ describe("realtime server", () => {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Server did not bind");
     const clients = (["ADMIN", "COORDINATOR", "FIELD_PERSONNEL"] as const).map((role) =>
-      connect(`http://localhost:${address.port}`, { auth: { token: signAuthToken({ sub: role, email: `${role}@test.local`, role }) } }),
+      connect(`http://localhost:${address.port}`, { auth: { token: signAuthToken({ sub: role, role }) } }),
     );
     await Promise.all(clients.map((client) => new Promise<void>((resolve, reject) => {
       client.once("connect", () => resolve());
