@@ -1,7 +1,7 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { app } from "../app.js";
-import { sortAlertsBySeverity } from "./crud.js";
+import { sortAlertsBySeverity } from "../modules/emergency/routes.js";
 
 describe("core API protection and validation", () => {
   for (const path of ["/api/expeditions", "/api/personnel", "/api/cargo-items", "/api/inventory-items", "/api/emergency-alerts", "/api/alerts"]) {
