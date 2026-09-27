@@ -1,0 +1,8 @@
+# Auto-detect text files and normalize line endings to CRLF for Windows development
+* text=auto eol=crlf
+*.md text eol=crlf
+*.ts text eol=crlf
+*.tsx text eol=crlf
+*.json text eol=crlf
+*.yml text eol=crlf
+*.yaml text eol=crlf
