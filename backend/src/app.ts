@@ -3,7 +3,8 @@ import cors from "cors";
 import express from "express";
 import authRoutes, { userRoutes } from "./auth/routes.js";
 import { requireAuth } from "./auth/middleware.js";
-import { alertRoutes, cargoRoutes, expeditionRoutes, inventoryRoutes, personnelRoutes } from "./api/crud.js";
+import { cargoRoutes, expeditionRoutes, inventoryRoutes, personnelRoutes } from "./api/crud.js";
+import alertRoutes from "./modules/emergency/routes.js";
 import locationRoutes from "./modules/locations/routes.js";
 
 export const app = express();
