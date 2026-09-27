@@ -108,7 +108,8 @@ alertRoutes.patch("/:id/resolve", requirePermission("emergency.resolve"), asyncR
   if (!id) return;
   const existing = await prisma.emergencyAlert.findUnique({ where: { id } });
   if (!existing) { res.status(404).json({ error: "Emergency alert not found" }); return; }
-  res.json(await prisma.emergencyAlert.update({ where: { id }, data: { status: "RESOLVED", resolvedAt: new Date() } }));
+  const updated = await prisma.emergencyAlert.update({ where: { id }, data: { status: "RESOLVED", resolvedAt: new Date() } });
+  res.json(filterStructuredLocation(req, updated));
 }));
 alertRoutes.get("/:id", requirePermission("emergency.read"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
@@ -122,7 +123,8 @@ alertRoutes.patch("/:id", requirePermission("emergency.manage"), asyncRoute(asyn
   const id = parseId(req, res);
   const data = parseBody(alertSchema.omit({ operationId: true }).partial(), req, res);
   if (!id || !data) return;
-  res.json(await prisma.emergencyAlert.update({ where: { id }, data }));
+  const updated = await prisma.emergencyAlert.update({ where: { id }, data });
+  res.json(filterStructuredLocation(req, updated));
 }));
 alertRoutes.delete("/:id", requirePermission("emergency.manage"), asyncRoute(async (req, res) => {
   const id = parseId(req, res);
