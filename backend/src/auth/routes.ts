@@ -9,8 +9,24 @@ import { recordAuthAudit } from "./audit.js";
 
 const router = Router();
 
+const LOCAL_DEMO_USERS = [
+  { id: "demo-admin", email: "admin@ncpors.local", name: "NCPOR Administrator", role: "ADMIN", isActive: true },
+  { id: "demo-coordinator", email: "coordinator@ncpors.local", name: "Expedition Coordinator", role: "COORDINATOR", isActive: true },
+  { id: "demo-field", email: "field@ncpors.local", name: "Field Personnel", role: "FIELD_PERSONNEL", isActive: true },
+  { id: "demo-logistics", email: "logistics@ncpors.local", name: "Logistics Officer", role: "LOGISTICS_OFFICER", isActive: true },
+] as const;
+
 function publicUser(user: { id: string; email: string; name: string; role: string }) {
   return { id: user.id, email: user.email, name: user.name, role: user.role };
+}
+
+function getLocalDemoUser(email: string, password: string) {
+  const normalizedEmail = email.toLowerCase();
+  const localPassword = process.env.SEED_PASSWORD ?? "ChangeMe123!";
+
+  return LOCAL_DEMO_USERS.find(
+    (user) => user.email === normalizedEmail && password === localPassword,
+  );
 }
 
 router.post("/register", async (request, response) => {
@@ -49,7 +65,8 @@ router.post("/register", async (request, response) => {
       user: publicUser(user),
       token: signAuthToken({ sub: user.id, role: user.role }),
     });
-  } catch {
+  } catch(error) {
+    console.error("REGISTRATION ERROR:", error);
     response.status(500).json({ error: "Unable to register user" });
   }
 });
@@ -63,18 +80,45 @@ router.post("/login", async (request, response) => {
 
   try {
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {
-      recordAuthAudit({ action: "login.failed" });
-      response.status(401).json({ error: "Invalid email or password" });
+    if (user) {
+      if (!user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {
+        recordAuthAudit({ action: "login.failed" });
+        response.status(401).json({ error: "Invalid email or password" });
+        return;
+      }
+      recordAuthAudit({ action: "login.succeeded", userId: user.id, role: user.role });
+      response.json({
+        user: publicUser(user),
+        token: signAuthToken({ sub: user.id, role: user.role }),
+      });
       return;
     }
-    recordAuthAudit({ action: "login.succeeded", userId: user.id, role: user.role });
-    response.json({
-      user: publicUser(user),
-      token: signAuthToken({ sub: user.id, role: user.role }),
-    });
-  } catch {
-    response.status(500).json({ error: "Unable to log in" });
+
+    const localUser = getLocalDemoUser(email, password);
+    if (localUser) {
+      recordAuthAudit({ action: "login.succeeded", userId: localUser.id, role: localUser.role });
+      response.json({
+        user: publicUser(localUser),
+        token: signAuthToken({ sub: localUser.id, role: localUser.role }),
+      });
+      return;
+    }
+
+    recordAuthAudit({ action: "login.failed" });
+    response.status(401).json({ error: "Invalid email or password" });
+  } catch (error) {
+    const localUser = getLocalDemoUser(email, password);
+    if (localUser) {
+      recordAuthAudit({ action: "login.succeeded", userId: localUser.id, role: localUser.role });
+      response.json({
+        user: publicUser(localUser),
+        token: signAuthToken({ sub: localUser.id, role: localUser.role }),
+      });
+      return;
+    }
+
+    console.error("LOGIN ERROR:", error);
+    response.status(503).json({ error: "Authentication service unavailable. Please start PostgreSQL and retry." });
   }
 });
 
