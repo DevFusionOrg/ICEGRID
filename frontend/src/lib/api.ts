@@ -119,6 +119,13 @@ export function login(email: string, password: string) {
   });
 }
 
+export function register(email: string, password: string , name: string,) {
+  return request<AuthResponse>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password , name }),
+  });
+}
+
 export function getCollection<T>(path: string, token: string) {
   return request<{ data: T[]; pagination: { total: number; page: number; pageSize: number; totalPages: number } }>(path, {
     headers: { Authorization: `Bearer ${token}` },

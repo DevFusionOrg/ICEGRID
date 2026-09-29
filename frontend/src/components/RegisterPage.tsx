@@ -1,14 +1,16 @@
 import { FormEvent, useState } from "react";
 import { Snowflake } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { login } from "../lib/api";
+import { register } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
 
-export function LoginPage() {
+
+export function RegisterPage() {
   const navigate = useNavigate();
   const setSession = useAuthStore((state) => state.setSession);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name , setName] = useState("")
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -17,7 +19,7 @@ export function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const session = await login(email, password);
+      const session = await register(email, password , name);
       setSession(session.token, session.user);
       navigate("/", { replace: true });
     } catch (requestError) {
@@ -40,6 +42,10 @@ export function LoginPage() {
         <h1 className="text-2xl font-bold text-polar-900">Welcome back</h1>
         <p className="mt-2 text-sm text-slate-500">Sign in to coordinate your expedition operations.</p>
         <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+          <label className="block text-sm font-medium text-slate-700">
+            Name
+            <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none ring-sky-500 focus:ring-2" type="string" required value={name} onChange={(event) => setName(event.target.value)} />
+          </label>
           <label className="block text-sm font-medium text-slate-700">
             Email
             <input className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 outline-none ring-sky-500 focus:ring-2" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} />
