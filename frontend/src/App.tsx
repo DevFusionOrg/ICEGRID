@@ -10,6 +10,7 @@ import { PlanningPage } from "./pages/PlanningPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { PersonnelPage } from "./pages/PersonnelPage";
 import {RegisterPage} from "./components/RegisterPage"
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 export default function App() {
   return (
@@ -17,6 +18,8 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
          <Route path="/register" element={<RegisterPage />} />
+           <Route element={<ProtectedRoute />}>
+    
 
         {/* ProtectedRoute temporarily disabled */}
         <Route element={<AppShell />}>
@@ -27,6 +30,7 @@ export default function App() {
           <Route path="personnel" element={<PersonnelPage />} />
           <Route path="emergency" element={<EmergencyPage />} />
          
+        </Route>
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

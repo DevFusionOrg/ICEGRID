@@ -73,33 +73,60 @@ router.post("/register", async (request, response) => {
 
 router.post("/login", async (request, response) => {
   const { email, password } = request.body as Record<string, unknown>;
+
   if (typeof email !== "string" || typeof password !== "string") {
     response.status(400).json({ error: "email and password are required" });
     return;
   }
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+    });
+
     if (user) {
-      if (!user.isActive || !(await bcrypt.compare(password, user.passwordHash))) {
+      const passwordValid = await bcrypt.compare(
+        password,
+        user.passwordHash
+      );
+
+      if (!user.isActive || !passwordValid) {
         recordAuthAudit({ action: "login.failed" });
         response.status(401).json({ error: "Invalid email or password" });
         return;
       }
-      recordAuthAudit({ action: "login.succeeded", userId: user.id, role: user.role });
+
+      recordAuthAudit({
+        action: "login.succeeded",
+        userId: user.id,
+        role: user.role,
+      });
+
       response.json({
         user: publicUser(user),
-        token: signAuthToken({ sub: user.id, role: user.role }),
+        token: signAuthToken({
+          sub: user.id,
+          role: user.role,
+        }),
       });
       return;
     }
 
     const localUser = getLocalDemoUser(email, password);
+
     if (localUser) {
-      recordAuthAudit({ action: "login.succeeded", userId: localUser.id, role: localUser.role });
+      recordAuthAudit({
+        action: "login.succeeded",
+        userId: localUser.id,
+        role: localUser.role,
+      });
+
       response.json({
         user: publicUser(localUser),
-        token: signAuthToken({ sub: localUser.id, role: localUser.role }),
+        token: signAuthToken({
+          sub: localUser.id,
+          role: localUser.role,
+        }),
       });
       return;
     }
@@ -108,19 +135,31 @@ router.post("/login", async (request, response) => {
     response.status(401).json({ error: "Invalid email or password" });
   } catch (error) {
     const localUser = getLocalDemoUser(email, password);
+
     if (localUser) {
-      recordAuthAudit({ action: "login.succeeded", userId: localUser.id, role: localUser.role });
+      recordAuthAudit({
+        action: "login.succeeded",
+        userId: localUser.id,
+        role: localUser.role,
+      });
+
       response.json({
         user: publicUser(localUser),
-        token: signAuthToken({ sub: localUser.id, role: localUser.role }),
+        token: signAuthToken({
+          sub: localUser.id,
+          role: localUser.role,
+        }),
       });
       return;
     }
 
     console.error("LOGIN ERROR:", error);
-    response.status(503).json({ error: "Authentication service unavailable. Please start PostgreSQL and retry." });
+    response.status(503).json({
+      error: "Authentication service unavailable. Please start PostgreSQL and retry.",
+    });
   }
 });
+
 
 const provisionUserSchema = z.object({
   email: z.string().trim().email().max(254),

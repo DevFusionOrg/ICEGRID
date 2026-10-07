@@ -51,14 +51,13 @@ ICEGRID is a centralized operational logistics platform built for the **National
 | **npm** | v9 or higher |
 | **Supabase account** | Free tier — [supabase.com](https://supabase.com) |
 
-> **No Docker needed!** The database runs in the cloud on Supabase.
 
 ---
 
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/ICEGRID.git
+git clone https://github.com/DevFusionOrg/ICEGRID.git
 cd ICEGRID
 ```
 
@@ -85,8 +84,6 @@ In your Supabase dashboard:
 3. Copy the **Session pooler** URI (port `5432`) — this is your `DATABASE_URL`
 4. Copy the **Direct connection** URI (port `5432`, starts with `db.xxx.supabase.co`) — this is your `DIRECT_URL`
 
-> ⚠️ **If your password contains special characters** (like `@`, `#`, `!`), URL-encode them.
-> For example: `@` → `%40`, `#` → `%23`, `!` → `%21`
 
 ### Step 5 — Configure Environment Variables
 
@@ -104,7 +101,7 @@ JWT_EXPIRES_IN=1d
 # Server
 PORT=8787
 FRONTEND_URL=http://localhost:5173
-SEED_PASSWORD=ChangeMe123!
+
 ```
 
 **Frontend** — create `frontend/.env`:
