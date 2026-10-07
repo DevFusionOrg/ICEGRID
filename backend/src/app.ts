@@ -6,11 +6,13 @@ import { requireAuth } from "./auth/middleware.js";
 import { cargoRoutes, expeditionRoutes, inventoryRoutes, personnelRoutes } from "./api/crud.js";
 import alertRoutes from "./modules/emergency/routes.js";
 import locationRoutes from "./modules/locations/routes.js";
+import realtimeRouter from "./realtimeExpressRoutes.js";
 
 export const app = express();
 
 app.use(cors({ origin: process.env.FRONTEND_URL ?? "http://localhost:5173" }));
 app.use(express.json());
+app.use("/api/realtime", realtimeRouter);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", requireAuth, userRoutes);
 app.use("/api/locations", requireAuth, locationRoutes);

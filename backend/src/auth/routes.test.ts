@@ -43,6 +43,19 @@ describe("authentication routes", () => {
     expect(response.body.user.passwordHash).toBeUndefined();
   });
 
+  it("falls back to the seeded local demo account when PostgreSQL is unavailable", async () => {
+    vi.mocked(prisma.user.findUnique).mockRejectedValue(new Error("Can't reach database server"));
+
+    const response = await request(app).post("/api/auth/login").send({
+      email: "admin@ncpors.local",
+      password: process.env.SEED_PASSWORD ?? "ChangeMe123!",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.user).toMatchObject({ email: "admin@ncpors.local", role: "ADMIN" });
+    expect(response.body.token).toEqual(expect.any(String));
+  });
+
   it("registers ordinary users as FIELD_PERSONNEL", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue(null);
     vi.mocked(prisma.user.create).mockResolvedValue(makeUser() as never);

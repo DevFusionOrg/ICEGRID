@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ncpors-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "FRONTEND_URL": "http://localhost:5173",
+    "JWT_EXPIRES_IN": "1d"
+  }
+}
+

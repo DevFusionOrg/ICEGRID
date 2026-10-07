@@ -1,9 +1,8 @@
-import type { Server as HttpServer } from "node:http";
-import { Server, type Socket } from "socket.io";
 import { z } from "zod";
-import { verifyAuthToken } from "./auth/jwt.js";
 import { hasPermission, PERMISSIONS, USER_ROLES, type Permission, type UserRole } from "./auth/roles.js";
 import { prisma } from "./db/prisma.js";
+
+// ─── Exported Types ─────────────────────────────────────────────────────────
 
 export type RealtimeUser = {
   id: string;
@@ -59,9 +58,10 @@ export type EmergencyCreated = Omit<AlertUpdate, "location">;
 
 export type RoomAcknowledgement = { ok: true } | { ok: false; error: string };
 
+// Kept for frontend type compatibility
 export interface ClientToServerEvents {
-  "expedition:join": (payload: { expeditionId: string }, acknowledge?: (result: RoomAcknowledgement) => void) => void;
-  "expedition:leave": (payload: { expeditionId: string }, acknowledge?: (result: RoomAcknowledgement) => void) => void;
+  "expedition:join": (payload: { expeditionId: string }, acknowledge?: (r: RoomAcknowledgement) => void) => void;
+  "expedition:leave": (payload: { expeditionId: string }, acknowledge?: (r: RoomAcknowledgement) => void) => void;
 }
 
 export interface ServerToClientEvents {
@@ -72,147 +72,110 @@ export interface ServerToClientEvents {
   "alert:new": (update: AlertUpdate) => void;
 }
 
-interface InterServerEvents {}
+// ─── SSE Client Registry ────────────────────────────────────────────────────
 
-interface SocketData {
+export type RealtimeClient = {
+  id: string;
   user: RealtimeUser;
-}
+  expeditions: Set<string>;
+  send: (event: string, data: unknown) => void;
+  close: () => void;
+};
 
-type RealtimeSocket = Socket<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
-type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>;
-
-const expeditionRoomPayloadSchema = z.object({ expeditionId: z.string().trim().min(1).max(100) }).strict();
-const MAX_TIMEOUT = 2_147_000_000;
-
-let io: RealtimeServer | undefined;
+const activeClients = new Map<string, RealtimeClient>();
 
 export const userRoom = (userId: string) => `user:${userId}`;
 export const roleRoom = (role: UserRole) => `role:${role}`;
 export const expeditionRoom = (expeditionId: string) => `expedition:${expeditionId}`;
-export const expeditionRoleRoom = (expeditionId: string, role: UserRole) => `${expeditionRoom(expeditionId)}:role:${role}`;
+export const expeditionRoleRoom = (expeditionId: string, role: UserRole) =>
+  `${expeditionRoom(expeditionId)}:role:${role}`;
 
-async function joinExpeditionRooms(socket: RealtimeSocket, expeditionId: string) {
-  await socket.join([expeditionRoom(expeditionId), expeditionRoleRoom(expeditionId, socket.data.user.role)]);
+export function registerRealtimeClient(client: RealtimeClient): void {
+  activeClients.set(client.id, client);
 }
 
-async function leaveExpeditionRooms(socket: RealtimeSocket, expeditionId: string) {
-  await Promise.all([
-    socket.leave(expeditionRoom(expeditionId)),
-    socket.leave(expeditionRoleRoom(expeditionId, socket.data.user.role)),
-  ]);
+export function unregisterRealtimeClient(clientId: string): void {
+  activeClients.delete(clientId);
 }
 
-function registerRoomHandlers(socket: RealtimeSocket) {
-  socket.on("expedition:join", (payload, acknowledge) => {
-    const respond = (result: RoomAcknowledgement) => acknowledge?.(result);
-    const parsed = expeditionRoomPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      respond({ ok: false, error: "Invalid expedition ID" });
-      return;
-    }
-    if (!hasPermission(socket.data.user.role, "expeditions.read")) {
-      respond({ ok: false, error: "Insufficient permissions" });
-      return;
-    }
-    void prisma.expedition.findUnique({ where: { id: parsed.data.expeditionId }, select: { id: true } })
-      .then(async (expedition) => {
-        if (!expedition) {
-          respond({ ok: false, error: "Expedition not found or inaccessible" });
-          return;
-        }
-        await joinExpeditionRooms(socket, parsed.data.expeditionId);
-        respond({ ok: true });
-      })
-      .catch(() => respond({ ok: false, error: "Unable to authorize expedition room" }));
-  });
-
-  socket.on("expedition:leave", (payload, acknowledge) => {
-    const parsed = expeditionRoomPayloadSchema.safeParse(payload);
-    if (!parsed.success) {
-      acknowledge?.({ ok: false, error: "Invalid expedition ID" });
-      return;
-    }
-    void leaveExpeditionRooms(socket, parsed.data.expeditionId)
-      .then(() => acknowledge?.({ ok: true }))
-      .catch(() => acknowledge?.({ ok: false, error: "Unable to leave expedition room" }));
-  });
+export function getConnectedClientCount(): number {
+  return activeClients.size;
 }
 
-export function createRealtimeServer(httpServer: HttpServer) {
-  io = new Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>(httpServer, {
-    cors: {
-      origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
-    },
-  });
+// ─── Room Handlers ──────────────────────────────────────────────────────────
 
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (typeof token !== "string") {
-      next(new Error("Authentication required"));
-      return;
-    }
-    try {
-      const verified = verifyAuthToken(token);
-      socket.data.user = {
-        id: verified.sub,
-        role: verified.role,
-        permissions: PERMISSIONS.filter((permission) => hasPermission(verified.role, permission)),
-        tokenIssuedAt: verified.iat,
-        tokenExpiresAt: verified.exp,
-      };
-      void Promise.resolve(socket.join([userRoom(verified.sub), roleRoom(verified.role)]))
-        .then(() => next())
-        .catch(() => next(new Error("Unable to initialize socket authorization")));
-    } catch {
-      next(new Error("Invalid or expired token"));
-    }
-  });
+const expeditionPayloadSchema = z
+  .object({ expeditionId: z.string().trim().min(1).max(100) })
+  .strict();
 
-  io.on("connection", (socket) => {
-    registerRoomHandlers(socket);
-    const remainingMs = Math.max(0, socket.data.user.tokenExpiresAt * 1000 - Date.now());
-    const expiryTimer = setTimeout(() => socket.disconnect(true), Math.min(remainingMs, MAX_TIMEOUT));
-    socket.once("disconnect", () => clearTimeout(expiryTimer));
-  });
+export async function handleExpeditionJoin(
+  clientId: string,
+  expeditionId: string,
+): Promise<RoomAcknowledgement> {
+  const client = activeClients.get(clientId);
+  if (!client) return { ok: false, error: "Client not found or disconnected" };
 
-  return io;
+  const parsed = expeditionPayloadSchema.safeParse({ expeditionId });
+  if (!parsed.success) return { ok: false, error: "Invalid expedition ID" };
+
+  if (!hasPermission(client.user.role, "expeditions.read")) {
+    return { ok: false, error: "Insufficient permissions" };
+  }
+
+  try {
+    const expedition = await prisma.expedition.findUnique({
+      where: { id: parsed.data.expeditionId },
+      select: { id: true },
+    });
+    if (!expedition) return { ok: false, error: "Expedition not found or inaccessible" };
+    client.expeditions.add(parsed.data.expeditionId);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Unable to authorize expedition room" };
+  }
 }
 
-export function broadcastCargoUpdate(update: CargoUpdate) {
-  if (!io) return;
-  for (const role of USER_ROLES) {
-    if (!hasPermission(role, "cargo.read")) continue;
-    const roleUpdate = hasPermission(role, "locations.read")
+export function handleExpeditionLeave(
+  clientId: string,
+  expeditionId: string,
+): RoomAcknowledgement {
+  const client = activeClients.get(clientId);
+  if (!client) return { ok: false, error: "Client not found or disconnected" };
+
+  const parsed = expeditionPayloadSchema.safeParse({ expeditionId });
+  if (!parsed.success) return { ok: false, error: "Invalid expedition ID" };
+
+  client.expeditions.delete(parsed.data.expeditionId);
+  return { ok: true };
+}
+
+// ─── Broadcast Functions ────────────────────────────────────────────────────
+
+export function broadcastCargoUpdate(update: CargoUpdate): void {
+  for (const client of activeClients.values()) {
+    if (!hasPermission(client.user.role, "cargo.read")) continue;
+    // Client must have joined at least one room, and it must match this expedition
+    if (client.expeditions.size === 0 || !client.expeditions.has(update.expeditionId)) continue;
+
+    const roleUpdate = hasPermission(client.user.role, "locations.read")
       ? update
       : { ...update, location: null, currentLocation: null };
-    const room = expeditionRoleRoom(update.expeditionId, role);
-    io.to(room).emit("cargo.updated", roleUpdate);
-    io.to(room).emit("cargo:update", roleUpdate);
+
+    client.send("cargo.updated", roleUpdate);
+    client.send("cargo:update", roleUpdate);
   }
 }
 
-export function broadcastLocationUpdated(update: LocationUpdate) {
-  if (!io) return;
-  for (const role of USER_ROLES) {
-    if (!hasPermission(role, "locations.read")) continue;
-    io.to(expeditionRoleRoom(update.expeditionId, role)).emit("location.updated", update);
+export function broadcastLocationUpdated(update: LocationUpdate): void {
+  for (const client of activeClients.values()) {
+    if (!hasPermission(client.user.role, "locations.read")) continue;
+    // Client must have joined at least one room, and it must match this expedition
+    if (client.expeditions.size === 0 || !client.expeditions.has(update.expeditionId)) continue;
+    client.send("location.updated", update);
   }
 }
 
-export function broadcastAlertNew(update: AlertUpdate) {
-  if (!io) return;
-  const legacyUpdate: AlertUpdate = {
-    id: update.id,
-    expeditionId: update.expeditionId,
-    title: update.title,
-    message: update.message,
-    severity: update.severity,
-    status: update.status,
-    location: update.location,
-    createdAt: update.createdAt,
-    resolvedAt: update.resolvedAt,
-  };
-  io.to(roleRoom("ADMIN")).to(roleRoom("COORDINATOR")).emit("alert:new", legacyUpdate);
+export function broadcastAlertNew(update: AlertUpdate): void {
   const safeUpdate: EmergencyCreated = {
     id: update.id,
     expeditionId: update.expeditionId,
@@ -223,12 +186,17 @@ export function broadcastAlertNew(update: AlertUpdate) {
     createdAt: update.createdAt,
     resolvedAt: update.resolvedAt,
   };
-  for (const role of USER_ROLES) {
-    if (!hasPermission(role, "emergency.read")) continue;
-    io.to(expeditionRoleRoom(update.expeditionId, role)).emit("emergency.created", safeUpdate);
-  }
-}
 
-export function getRealtimeServer() {
-  return io;
+  for (const client of activeClients.values()) {
+    // ADMIN / COORDINATOR get the full alert with location
+    if (client.user.role === "ADMIN" || client.user.role === "COORDINATOR") {
+      client.send("alert:new", update);
+    }
+    // Anyone with emergency.read gets the safe (no location) version scoped to joined expeditions
+    if (hasPermission(client.user.role, "emergency.read")) {
+      if (client.expeditions.size > 0 && client.expeditions.has(update.expeditionId)) {
+        client.send("emergency.created", safeUpdate);
+      }
+    }
+  }
 }
