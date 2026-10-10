@@ -122,40 +122,7 @@ export function filterStructuredLocation<T>(request: Request, value: T): T {
   return filtered as T;
 }
 
-export const expeditionRoutes = Router();
-expeditionRoutes.get("/", requirePermission("expeditions.read"), asyncRoute(async (req, res) => {
-  const pagination = parsePagination(req, res);
-  if (!pagination) return;
-  const [data, total] = await Promise.all([
-    prisma.expedition.findMany({ skip: (pagination.page - 1) * pagination.pageSize, take: pagination.pageSize, orderBy: { createdAt: "desc" } }),
-    prisma.expedition.count(),
-  ]);
-  sendPage(res, data, total, pagination.page, pagination.pageSize);
-}));
-expeditionRoutes.post("/", requirePermission("expeditions.create"), asyncRoute(async (req, res) => {
-  const data = parseBody(expeditionSchema, req, res);
-  if (!data) return;
-  res.status(201).json(await prisma.expedition.create({ data }));
-}));
-expeditionRoutes.get("/:id", requirePermission("expeditions.read"), asyncRoute(async (req, res) => {
-  const id = parseId(req, res);
-  if (!id) return;
-  const data = await prisma.expedition.findUnique({ where: { id } });
-  if (!data) { res.status(404).json({ error: "Expedition not found" }); return; }
-  res.json(data);
-}));
-expeditionRoutes.patch("/:id", requirePermission("expeditions.update"), asyncRoute(async (req, res) => {
-  const id = parseId(req, res);
-  const data = parseBody(expeditionSchema.partial(), req, res);
-  if (!id || !data) return;
-  res.json(await prisma.expedition.update({ where: { id }, data }));
-}));
-expeditionRoutes.delete("/:id", requirePermission("expeditions.delete"), asyncRoute(async (req, res) => {
-  const id = parseId(req, res);
-  if (!id) return;
-  await prisma.expedition.delete({ where: { id } });
-  res.status(204).send();
-}));
+export { expeditionRoutes } from "../modules/expeditions/routes.js";
 
 function createSimpleCrudRoutes<T extends object>(
   router: Router,
