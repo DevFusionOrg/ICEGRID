@@ -18,11 +18,14 @@ model Expedition {
   startDate       DateTime?
   endDate         DateTime?
   leadScientistId String?
+  coordinatorId   String?
+  coordinatorName String?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   personnel       Personnel[]
-  leadScientist   Personnel?      @relation("ExpeditionLead", fields: [leadScientistId], references: [id], onDelete: SetNull)
+  leadScientist   Personnel?       @relation("ExpeditionLead", fields: [leadScientistId], references: [id], onDelete: SetNull)
+  coordinator     User?            @relation("ExpeditionCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
   cargoItems      CargoItem[]
   inventoryItems  InventoryItem[]
   emergencyAlerts EmergencyAlert[]
@@ -208,6 +211,7 @@ model User {
 
   createdAlerts        EmergencyAlert[] @relation("CreatedAlerts")
   acknowledgedAlerts   EmergencyAlert[] @relation("AcknowledgedAlerts")
+  coordinatedExpeditions Expedition[]   @relation("ExpeditionCoordinator")
 }
 
 enum ExpeditionStatus {

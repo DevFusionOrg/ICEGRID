@@ -49,6 +49,29 @@ export type CargoItem = {
   updatedAt: string;
 };
 
+export type ReadinessChecklistItem = {
+  id: string;
+  label: string;
+  description: string;
+  weight: number;
+  passed: boolean;
+  score: number;
+};
+
+export type ExpeditionReadinessResult = {
+  score: number;
+  status: "READY" | "IN_PROGRESS" | "ATTENTION_REQUIRED";
+  summary: string;
+  checklist: ReadinessChecklistItem[];
+  metrics: {
+    personnelCount: number;
+    cargoCount: number;
+    inventoryCount: number;
+    openAlertsCount: number;
+    criticalAlertsCount: number;
+  };
+};
+
 export type Expedition = {
   id: string;
   name: string;
@@ -58,6 +81,39 @@ export type Expedition = {
   status: "PLANNED" | "ACTIVE" | "COMPLETED" | "CANCELLED";
   startDate: string | null;
   endDate: string | null;
+  coordinatorId?: string | null;
+  coordinatorName?: string | null;
+  leadScientistId?: string | null;
+  leadScientist?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role?: string;
+    organization?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
+  coordinator?: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  } | null;
+  personnel?: Personnel[];
+  cargoItems?: CargoItem[];
+  inventoryItems?: InventoryItem[];
+  emergencyAlerts?: EmergencyAlert[];
+  _count?: {
+    personnel: number;
+    cargoItems: number;
+    inventoryItems: number;
+    emergencyAlerts: number;
+  };
+  readiness?: {
+    score: number;
+    status: "READY" | "IN_PROGRESS" | "ATTENTION_REQUIRED";
+    summary: string;
+  };
 };
 
 export type Personnel = {
@@ -142,6 +198,50 @@ export function resolveAlert(token: string, id: string) {
 
 export function createExpedition(token: string, data: Record<string, unknown>) {
   return request<Expedition>("/expeditions", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function getExpedition(token: string, id: string) {
+  return request<Expedition>(`/expeditions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+}
+
+export function getExpeditionReadiness(token: string, id: string) {
+  return request<ExpeditionReadinessResult & { expeditionId: string }>(`/expeditions/${id}/readiness`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function generateExpeditionCode(token: string, prefix = "IEA") {
+  return request<{ code: string }>(`/expeditions/generate-code?prefix=${encodeURIComponent(prefix)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function validateExpeditionCode(token: string, code: string, id?: string) {
+  const query = id ? `?code=${encodeURIComponent(code)}&id=${encodeURIComponent(id)}` : `?code=${encodeURIComponent(code)}`;
+  return request<{ valid: boolean; error?: string; message?: string }>(`/expeditions/validate-code${query}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function updateExpedition(token: string, id: string, data: Record<string, unknown>) {
+  return request<Expedition>(`/expeditions/${id}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteExpedition(token: string, id: string) {
+  return request<void>(`/expeditions/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function getUsers(token: string) {
+  return request<{ data: User[] }>("/users", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export function createPersonnel(token: string, data: Record<string, unknown>) {

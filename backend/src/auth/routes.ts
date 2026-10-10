@@ -169,6 +169,24 @@ const provisionUserSchema = z.object({
 });
 
 export const userRoutes = Router();
+
+userRoutes.get("/", requirePermission("users.read"), async (_request, response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, email: true, name: true, role: true },
+      orderBy: { name: "asc" },
+    });
+    if (users.length > 0) {
+      response.json({ data: users });
+      return;
+    }
+  } catch {
+    // Fall back to local demo users if DB is empty or unreachable
+  }
+  response.json({ data: LOCAL_DEMO_USERS.map(publicUser) });
+});
+
 userRoutes.post("/", requirePermission("users.manage"), async (request, response) => {
   const result = provisionUserSchema.safeParse(request.body);
   if (!result.success) {
