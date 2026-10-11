@@ -21,7 +21,7 @@ export function RegisterPage() {
     try {
       const session = await register(email, password , name);
       setSession(session.token, session.user);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to sign in");
     } finally {

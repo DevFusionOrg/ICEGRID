@@ -19,7 +19,7 @@ export function LoginPage() {
     try {
       const session = await login(email, password);
       setSession(session.token, session.user);
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to sign in");
     } finally {

@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,9 +12,43 @@
   text-rendering: optimizeLegibility;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  background: #f4f8fb;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.polar-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.polar-glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 250, 252, 0.88));
+  border: 1px solid rgba(186, 214, 231, 0.7);
+  box-shadow: 0 10px 26px rgba(6, 38, 55, 0.06);
+}
+
+.subtle-grid-bg {
+  background-image: linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.glove-btn {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.glove-btn:hover {
+  transform: translateY(-1px);
 }
 
 .cargo-marker {
