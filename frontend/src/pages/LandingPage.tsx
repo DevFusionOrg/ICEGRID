@@ -190,7 +190,7 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section className="relative isolate min-h-[820px] overflow-hidden border-b border-sky-100 bg-[#edf7fb]">
+        <section className="relative isolate min-h-[700px] overflow-hidden border-b border-sky-100 bg-[#edf7fb]">
           <div className="absolute inset-0 z-0">
             <img
               src="/icegrid-antarctic-hero.jpg"
@@ -201,24 +201,24 @@ export function LandingPage() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.28),transparent_32%)]" />
           </div>
 
-          <div className="relative z-20 mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 lg:px-8">
-            <div className="max-w-[1180px] py-10 lg:pb-16 lg:pt-14">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-sky-800 shadow-sm">
+          <div className="relative z-20 mx-auto max-w-7xl px-4 pb-8 pt-8 sm:px-6 lg:px-8">
+            <div className="max-w-[1080px] py-7 sm:py-8 lg:pb-10 lg:pt-10">
+              <div className="mb-5 inline-flex max-w-full flex-wrap items-center gap-2 rounded-full border border-sky-200 bg-white/75 px-3 py-1.5 text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-sky-800 shadow-sm">
                 <span className="h-2 w-2 rounded-full bg-sky-500" />
                 <span>Antarctic Continental Ops</span>
                 <span className="text-slate-400">|</span>
                 <span className="text-slate-600">Expedition logistics platform</span>
               </div>
 
-              <h1 className="max-w-[1180px] text-[clamp(4rem,7vw,9rem)] font-black leading-[0.88] tracking-[-0.06em] text-slate-900">
+              <h1 className="max-w-[1080px] break-normal text-[clamp(2.5rem,7vw,3.5rem)] font-black leading-[1.04] tracking-[-0.045em] text-slate-900 sm:text-[clamp(3rem,6vw,3.75rem)] lg:text-[clamp(4rem,5.1vw,4.75rem)]">
                 Humanity&apos;s Command Window at the <span className="text-sky-700 underline decoration-sky-200 decoration-wavy underline-offset-[10px]">Edge of the World.</span>
               </h1>
 
-              <p className="mt-6 max-w-[1120px] text-lg text-slate-700 sm:text-xl lg:text-[1.55rem] lg:leading-[1.5]">
+              <p className="mt-5 max-w-[820px] text-base leading-relaxed text-slate-700 sm:text-lg lg:text-xl">
                 Connecting isolated field teams, tracked traverse convoys, cryogenic ice-core freight, and emergency life-safety across 14 million square kilometers of Antarctic ice.
               </p>
 
-              <div className="mt-8 flex flex-wrap items-center gap-4">
+              <div className="mt-7 flex flex-wrap items-center gap-3 sm:gap-4">
                 <button
                   type="button"
                   onClick={handleCommandCenter}
@@ -236,7 +236,7 @@ export function LandingPage() {
                 </a>
               </div>
 
-              <div className="mt-8 flex flex-wrap items-center gap-6 text-xs font-mono text-slate-600">
+              <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3 text-xs font-mono text-slate-600">
                 <div className="flex items-center gap-2">
                   <BadgeCheck className="h-4 w-4 text-sky-700" />
                   <span>Expedition planning</span>
@@ -253,7 +253,7 @@ export function LandingPage() {
             </div>
           </div>
 
-          <div className="mx-auto max-w-7xl px-4 pb-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl px-4 pb-5 sm:px-6 lg:px-8">
             <div className="rounded-lg border border-sky-100 bg-white/75 px-4 py-3 text-xs text-slate-600 shadow-sm">
               <span className="font-mono uppercase tracking-[0.12em] text-sky-800">Platform overview</span>
               <span className="ml-3">Capabilities summary · Not a live operational feed</span>
