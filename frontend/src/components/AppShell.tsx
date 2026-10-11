@@ -6,7 +6,7 @@ import { roleLabels, useAuthStore } from "../stores/auth";
 import { OfflineStatus } from "./OfflineStatus";
 
 const navigation = [
-  { label: "Dashboard", path: "/", icon: LayoutDashboard },
+  { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { label: "Expeditions", path: "/expeditions", icon: Compass },
   { label: "Cargo", path: "/cargo", icon: Package },
   { label: "Inventory", path: "/inventory", icon: Boxes },
