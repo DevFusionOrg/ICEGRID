@@ -2,7 +2,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "proj4leaflet";
 import { MapContainer, Marker, Popup } from "react-leaflet";
-import type { LocationPoint } from "../lib/api";
+import { parsePolarLocation } from "../lib/polarMapConfig";
+import type { MapLocation } from "../lib/polarMapConfig";
+
+export type { MapLocation } from "../lib/polarMapConfig";
+export { parsePolarLocation } from "../lib/polarMapConfig";
 
 type ProjLeaflet = typeof L & { Proj: { CRS: new (code: string, definition: string, options: object) => L.CRS } };
 const ProjectedLeaflet = L as ProjLeaflet;
@@ -11,21 +15,6 @@ const projections = {
   antarctic: new ProjectedLeaflet.Proj.CRS("EPSG:3031", "+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +datum=WGS84 +units=m +no_defs", projectionOptions),
   arctic: new ProjectedLeaflet.Proj.CRS("EPSG:3995", "+proj=stere +lat_0=90 +lat_ts=71 +lon_0=0 +k=1 +datum=WGS84 +units=m +no_defs", projectionOptions),
 };
-
-export type MapLocation = Pick<LocationPoint, "latitude" | "longitude"> | string | null;
-
-export function parsePolarLocation(location: MapLocation): [number, number] | null {
-  if (location && typeof location === "object") {
-    const { latitude, longitude } = location;
-    return Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 && Number.isFinite(longitude) && longitude >= -180 && longitude <= 180
-      ? [latitude, longitude]
-      : null;
-  }
-  const match = location?.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (!match) return null;
-  const point: [number, number] = [Number(match[1]), Number(match[2])];
-  return point[0] >= -90 && point[0] <= 90 && point[1] >= -180 && point[1] <= 180 ? point : null;
-}
 
 export type PolarMarker = { id: string; location: MapLocation; label: string; detail?: string; color: string };
 
