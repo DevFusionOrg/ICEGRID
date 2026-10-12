@@ -17,11 +17,11 @@ import {
 test("selects the matching polar GIBS endpoint and tile grid", () => {
   assert.match(
     getPolarTileUrl("antarctic"),
-    /^https:\/\/gibs\.earthdata\.nasa\.gov\/wmts\/epsg3031\/best\/BlueMarble_NextGeneration\/default\/2024-01-01\/500m\/\{z\}\/\{y\}\/\{x\}\.jpg$/,
+    /^https:\/\/gibs\.earthdata\.nasa\.gov\/wmts\/epsg3031\/best\/BlueMarble_NextGeneration\/default\/500m\/\{z\}\/\{y\}\/\{x\}\.jpeg$/,
   );
   assert.match(
     getPolarTileUrl("arctic"),
-    /^https:\/\/gibs\.earthdata.nasa.gov\/wmts\/epsg3413\/best\/BlueMarble_NextGeneration\/default\/2024-01-01\/500m\/\{z\}\/\{y\}\/\{x\}\.jpg$/,
+    /^https:\/\/gibs\.earthdata\.nasa.gov\/wmts\/epsg3413\/best\/BlueMarble_NextGeneration\/default\/500m\/\{z\}\/\{y\}\/\{x\}\.jpeg$/,
   );
   for (const region of ["antarctic", "arctic"] as const) {
     const config = POLAR_REGION_DEFINITIONS[region];

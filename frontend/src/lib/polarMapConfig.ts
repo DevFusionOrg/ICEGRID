@@ -17,14 +17,13 @@ export type PolarRegionDefinition = {
   layer: string;
   matrixSet: "500m" | "250m";
   mimeType: "image/jpeg" | "image/png";
-  format: "jpg" | "png";
+  format: "jpeg" | "png";
   tileSize: number;
   gridOrigin: PolarCoordinate;
   resolutions: readonly number[];
   maxNativeZoom: number;
   minZoom: number;
   maxZoom: number;
-  time: string;
   tileUrlTemplate: string;
 };
 
@@ -47,7 +46,7 @@ const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
   const polarBase = region === "antarctic" ? "https://gibs.earthdata.nasa.gov/wmts/epsg3031/best" : "https://gibs.earthdata.nasa.gov/wmts/epsg3413/best";
   const matrixSet = (readEnvString("VITE_POLAR_MAP_MATRIX_SET", "500m") as "500m" | "250m") || "500m";
   const mimeType = (readEnvString("VITE_POLAR_MAP_MIME_TYPE", "image/jpeg") as "image/jpeg" | "image/png") || "image/jpeg";
-  const format = (readEnvString("VITE_POLAR_MAP_FORMAT", "jpg") as "jpg" | "png") || "jpg";
+  const format = (readEnvString("VITE_POLAR_MAP_FORMAT", "jpeg") as "jpeg" | "png") || "jpeg";
   const layer = readEnvString("VITE_POLAR_MAP_LAYER", "BlueMarble_NextGeneration");
   const maxNativeZoomSetting = (viteEnv as Record<string, unknown>).VITE_POLAR_MAP_MAX_NATIVE_ZOOM;
   const maxNativeZoom = typeof maxNativeZoomSetting === "string" && maxNativeZoomSetting.trim() !== "" && Number.isFinite(Number(maxNativeZoomSetting))
@@ -55,7 +54,6 @@ const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
     : matrixSet === "250m" ? 5 : 4;
   const minZoom = getEnvNumber("VITE_POLAR_MAP_MIN_ZOOM", 0);
   const maxZoom = getEnvNumber("VITE_POLAR_MAP_MAX_ZOOM", 5);
-  const time = readEnvString("VITE_POLAR_MAP_TIME", "2024-01-01");
   return {
     epsg: region === "antarctic" ? "EPSG:3031" : "EPSG:3413",
     proj4: region === "antarctic"
@@ -74,8 +72,7 @@ const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
     maxNativeZoom,
     minZoom,
     maxZoom,
-    time,
-    tileUrlTemplate: `${polarBase}/${layer}/default/{time}/{matrixSet}/{z}/{y}/{x}.{format}`,
+    tileUrlTemplate: `${polarBase}/${layer}/default/{matrixSet}/{z}/{y}/{x}.{format}`,
   };
 };
 

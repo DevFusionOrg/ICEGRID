@@ -55,11 +55,19 @@ test("polar region definitions match NASA GIBS metadata and shared config", () =
   assert.deepEqual(Array.from(POLAR_REGION_DEFINITIONS.arctic.resolutions), [8192, 4096, 2048, 1024, 512]);
   assert.equal(POLAR_REGION_DEFINITIONS.antarctic.mimeType, "image/jpeg");
   assert.equal(POLAR_REGION_DEFINITIONS.arctic.mimeType, "image/jpeg");
+  assert.equal(POLAR_REGION_DEFINITIONS.antarctic.format, "jpeg");
+  assert.equal(POLAR_REGION_DEFINITIONS.arctic.format, "jpeg");
   assert.equal(POLAR_REGION_DEFINITIONS.antarctic.maxNativeZoom, 4);
   assert.equal(POLAR_REGION_DEFINITIONS.arctic.maxNativeZoom, 4);
   assert.match(POLAR_MAP_ATTRIBUTION, /NASA Global Imagery Browse Services/);
-  assert.match(POLAR_REGION_DEFINITIONS.antarctic.tileUrlTemplate, /BlueMarble_NextGeneration\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
-  assert.match(POLAR_REGION_DEFINITIONS.arctic.tileUrlTemplate, /BlueMarble_NextGeneration\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
+  assert.equal(
+    POLAR_REGION_DEFINITIONS.antarctic.tileUrlTemplate,
+    "https://gibs.earthdata.nasa.gov/wmts/epsg3031/best/BlueMarble_NextGeneration/default/{matrixSet}/{z}/{y}/{x}.{format}",
+  );
+  assert.equal(
+    POLAR_REGION_DEFINITIONS.arctic.tileUrlTemplate,
+    "https://gibs.earthdata.nasa.gov/wmts/epsg3413/best/BlueMarble_NextGeneration/default/{matrixSet}/{z}/{y}/{x}.{format}",
+  );
 });
 
 test("projected-distance helper is positive and finite for each region", () => {

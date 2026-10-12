@@ -66,7 +66,7 @@ export function preparePolarMapMarkers(
 
 export function getPolarTileUrl(region: PolarRegion): string {
   const config = getPolarRegionDefinition(region);
-  return config.tileUrlTemplate.replace(/\{(time|matrixSet|format)\}/g, (_token, key: "time" | "matrixSet" | "format") => config[key]);
+  return config.tileUrlTemplate.replace(/\{(matrixSet|format)\}/g, (_token, key: "matrixSet" | "format") => config[key]);
 }
 
 export function constrainPolarProjectedCenter(
