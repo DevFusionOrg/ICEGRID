@@ -29,31 +29,68 @@ export type PolarRegionDefinition = {
 
 const viteEnv = typeof import.meta !== "undefined" && "env" in import.meta ? import.meta.env : {};
 
-const getEnvNumber = (name: string, fallback: number) => {
-  const value = (viteEnv as Record<string, unknown>)[name];
-  return typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)) ? Number(value) : fallback;
-};
+const MATRIX_SETS = ["500m", "250m"] as const;
+const MIME_TYPES = ["image/jpeg", "image/png"] as const;
+const FORMATS = ["jpeg", "png"] as const;
+const PNG_TILE_LAYERS = ["VIIRS_NOAA20_DayNightBand_At_Sensor_Radiance"] as const;
+
+type PolarMapEnvironment = Readonly<Record<string, unknown>>;
+
+function readEnvEnum<T extends readonly string[]>(
+  environment: PolarMapEnvironment,
+  name: string,
+  supportedValues: T,
+  fallback: T[number],
+): T[number] {
+  const value = environment[name];
+  if (typeof value !== "string") return fallback;
+  return supportedValues.find((supported) => supported === value) ?? fallback;
+}
+
+function readEnvNumber(environment: PolarMapEnvironment, name: string, fallback: number): number {
+  const value = environment[name];
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 const buildResolutionLevels = (startResolution: number, levelCount: number): readonly number[] =>
   Array.from({ length: levelCount }, (_, index) => startResolution / 2 ** index);
 
-const readEnvString = (name: string, fallback: string) => {
-  const value = (viteEnv as Record<string, string | undefined>)[name];
+const readEnvString = (environment: PolarMapEnvironment, name: string, fallback: string) => {
+  const value = environment[name];
   return typeof value === "string" && value.trim() !== "" ? value : fallback;
 };
 
-const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
+export function makePolarTileConfig(
+  region: PolarRegion,
+  environment: PolarMapEnvironment = viteEnv,
+): PolarRegionDefinition {
   const polarBase = region === "antarctic" ? "https://gibs.earthdata.nasa.gov/wmts/epsg3031/best" : "https://gibs.earthdata.nasa.gov/wmts/epsg3413/best";
-  const matrixSet = (readEnvString("VITE_POLAR_MAP_MATRIX_SET", "500m") as "500m" | "250m") || "500m";
-  const mimeType = (readEnvString("VITE_POLAR_MAP_MIME_TYPE", "image/jpeg") as "image/jpeg" | "image/png") || "image/jpeg";
-  const format = (readEnvString("VITE_POLAR_MAP_FORMAT", "jpeg") as "jpeg" | "png") || "jpeg";
-  const layer = readEnvString("VITE_POLAR_MAP_LAYER", "BlueMarble_NextGeneration");
-  const maxNativeZoomSetting = (viteEnv as Record<string, unknown>).VITE_POLAR_MAP_MAX_NATIVE_ZOOM;
-  const maxNativeZoom = typeof maxNativeZoomSetting === "string" && maxNativeZoomSetting.trim() !== "" && Number.isFinite(Number(maxNativeZoomSetting))
-    ? Number(maxNativeZoomSetting)
-    : matrixSet === "250m" ? 5 : 4;
-  const minZoom = getEnvNumber("VITE_POLAR_MAP_MIN_ZOOM", 0);
-  const maxZoom = getEnvNumber("VITE_POLAR_MAP_MAX_ZOOM", 5);
+  const matrixSet = readEnvEnum(environment, "VITE_POLAR_MAP_MATRIX_SET", MATRIX_SETS, "500m");
+  const configuredMimeType = readEnvEnum(environment, "VITE_POLAR_MAP_MIME_TYPE", MIME_TYPES, "image/jpeg");
+  const configuredFormat = readEnvEnum(environment, "VITE_POLAR_MAP_FORMAT", FORMATS, "jpeg");
+  const layer = readEnvString(environment, "VITE_POLAR_MAP_LAYER", "BlueMarble_NextGeneration");
+  const isBlueMarbleNextGeneration = layer === "BlueMarble_NextGeneration";
+  const hasMatchingImageFormat =
+    (configuredMimeType === "image/jpeg" && configuredFormat === "jpeg") ||
+    (configuredMimeType === "image/png" && configuredFormat === "png");
+  const supportsConfiguredPng = PNG_TILE_LAYERS.some((supportedLayer) => supportedLayer === layer);
+  const hasSupportedLayerFormat =
+    configuredFormat === "jpeg" ||
+    (configuredFormat === "png" && supportsConfiguredPng);
+  const useJpeg = isBlueMarbleNextGeneration || !hasMatchingImageFormat || !hasSupportedLayerFormat;
+  const mimeType = useJpeg ? "image/jpeg" : configuredMimeType;
+  const format = useJpeg ? "jpeg" : configuredFormat;
+  const levelCount = matrixSet === "250m" ? 6 : 5;
+  const resolutions = buildResolutionLevels(8192, levelCount);
+  const defaultMaxNativeZoom = matrixSet === "250m" ? 5 : 4;
+  const maxNativeZoom = Math.min(
+    Math.max(readEnvNumber(environment, "VITE_POLAR_MAP_MAX_NATIVE_ZOOM", defaultMaxNativeZoom), 0),
+    resolutions.length - 1,
+  );
+  const minZoom = readEnvNumber(environment, "VITE_POLAR_MAP_MIN_ZOOM", 0);
+  const maxZoom = readEnvNumber(environment, "VITE_POLAR_MAP_MAX_ZOOM", 5);
   return {
     epsg: region === "antarctic" ? "EPSG:3031" : "EPSG:3413",
     proj4: region === "antarctic"
@@ -68,12 +105,12 @@ const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
     format,
     tileSize: 512,
     gridOrigin: [-4194304, 4194304],
-    resolutions: buildResolutionLevels(8192, matrixSet === "250m" ? 6 : 5),
+    resolutions,
     maxNativeZoom,
     minZoom,
     maxZoom,
     tileUrlTemplate: `${polarBase}/${layer}/default/{matrixSet}/{z}/{y}/{x}.{format}`,
-  };
+  }
 };
 
 export const POLAR_REGION_DEFINITIONS: Record<PolarRegion, PolarRegionDefinition> = {

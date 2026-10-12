@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 // @ts-ignore -- Node typings are not included in the frontend typecheck.
 import { test } from "node:test";
-import { POLAR_LATITUDE_LIMIT, POLAR_MAP_ATTRIBUTION, POLAR_REGION_DEFINITIONS, getMaxProjectedDistanceFromPole, isInPolarRegion, parsePolarLocation } from "../src/lib/polarMapConfig.ts";
+import { POLAR_LATITUDE_LIMIT, POLAR_MAP_ATTRIBUTION, POLAR_REGION_DEFINITIONS, getMaxProjectedDistanceFromPole, isInPolarRegion, makePolarTileConfig, parsePolarLocation } from "../src/lib/polarMapConfig.ts";
 
 test("parsePolarLocation preserves the existing coordinate parsing contract", () => {
   assert.deepEqual(parsePolarLocation({ latitude: -70, longitude: 45 }), [-70, 45]);
@@ -68,6 +68,98 @@ test("polar region definitions match NASA GIBS metadata and shared config", () =
     POLAR_REGION_DEFINITIONS.arctic.tileUrlTemplate,
     "https://gibs.earthdata.nasa.gov/wmts/epsg3413/best/BlueMarble_NextGeneration/default/{matrixSet}/{z}/{y}/{x}.{format}",
   );
+});
+
+test("invalid matrix and image-format environment settings fall back to safe defaults", () => {
+  const invalidMatrix = makePolarTileConfig("antarctic", {
+    VITE_POLAR_MAP_MATRIX_SET: "250M",
+  });
+  assert.equal(invalidMatrix.matrixSet, "500m");
+  assert.equal(invalidMatrix.resolutions.length, 5);
+
+  const invalidMimeType = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_MIME_TYPE: "image/webp",
+  });
+  assert.equal(invalidMimeType.mimeType, "image/jpeg");
+  assert.equal(invalidMimeType.format, "jpeg");
+
+  const invalidFormat = makePolarTileConfig("antarctic", {
+    VITE_POLAR_MAP_FORMAT: "jpg",
+  });
+  assert.equal(invalidFormat.mimeType, "image/jpeg");
+  assert.equal(invalidFormat.format, "jpeg");
+
+  const mismatchedFormats = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_MIME_TYPE: "image/png",
+    VITE_POLAR_MAP_FORMAT: "jpeg",
+  });
+  assert.equal(mismatchedFormats.mimeType, "image/jpeg");
+  assert.equal(mismatchedFormats.format, "jpeg");
+});
+
+test("Blue Marble always uses JPEG regardless of valid PNG overrides", () => {
+  for (const region of ["antarctic", "arctic"] as const) {
+    const config = makePolarTileConfig(region, {
+      VITE_POLAR_MAP_LAYER: "BlueMarble_NextGeneration",
+      VITE_POLAR_MAP_MIME_TYPE: "image/png",
+      VITE_POLAR_MAP_FORMAT: "png",
+    });
+    const tileUrl = config.tileUrlTemplate
+      .replace("{matrixSet}", config.matrixSet)
+      .replace("{format}", config.format);
+
+    assert.equal(config.mimeType, "image/jpeg");
+    assert.equal(config.format, "jpeg");
+    assert.match(tileUrl, /\/default\/500m\/\{z\}\/\{y\}\/\{x\}\.jpeg$/);
+  }
+});
+
+test("PNG overrides are retained only for a layer with a supported GIBS PNG resource", () => {
+  const supportedPngLayer = makePolarTileConfig("antarctic", {
+    VITE_POLAR_MAP_LAYER: "VIIRS_NOAA20_DayNightBand_At_Sensor_Radiance",
+    VITE_POLAR_MAP_MIME_TYPE: "image/png",
+    VITE_POLAR_MAP_FORMAT: "png",
+  });
+  assert.equal(supportedPngLayer.mimeType, "image/png");
+  assert.equal(supportedPngLayer.format, "png");
+  assert.match(
+    supportedPngLayer.tileUrlTemplate.replace("{format}", supportedPngLayer.format),
+    /\/default\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.png$/,
+  );
+
+  const unsupportedPngLayer = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_LAYER: "Unknown_Layer",
+    VITE_POLAR_MAP_MIME_TYPE: "image/png",
+    VITE_POLAR_MAP_FORMAT: "png",
+  });
+  assert.equal(unsupportedPngLayer.mimeType, "image/jpeg");
+  assert.equal(unsupportedPngLayer.format, "jpeg");
+});
+
+test("native zoom falls back by matrix set and clamps to available resolutions", () => {
+  for (const invalid of [undefined, "", "not-a-number", "Infinity"]) {
+    const config = makePolarTileConfig("antarctic", {
+      VITE_POLAR_MAP_MATRIX_SET: "250m",
+      VITE_POLAR_MAP_MAX_NATIVE_ZOOM: invalid,
+    });
+    assert.equal(config.maxNativeZoom, 5);
+  }
+
+  const defaultGridClamp = makePolarTileConfig("antarctic", {
+    VITE_POLAR_MAP_MAX_NATIVE_ZOOM: "999",
+  });
+  assert.equal(defaultGridClamp.maxNativeZoom, defaultGridClamp.resolutions.length - 1);
+
+  const finerGridClamp = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_MATRIX_SET: "250m",
+    VITE_POLAR_MAP_MAX_NATIVE_ZOOM: "999",
+  });
+  assert.equal(finerGridClamp.maxNativeZoom, finerGridClamp.resolutions.length - 1);
+
+  const negativeZoom = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_MAX_NATIVE_ZOOM: "-3",
+  });
+  assert.equal(negativeZoom.maxNativeZoom, 0);
 });
 
 test("projected-distance helper is positive and finite for each region", () => {
