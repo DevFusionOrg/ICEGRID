@@ -4,6 +4,7 @@ import { Filter, MapPinned, Radio, Search } from "lucide-react";
 import { CargoItem, CargoStatus, Expedition, getCollection, updateCargoLocation } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
 import { PolarMap } from "../components/PolarMap";
+import { POLAR_REGION_DEFINITIONS } from "../lib/polarMapConfig";
 import { useExpeditionRoom, useRealtime } from "../components/RealtimeProvider";
 
 const STATUS_OPTIONS: Array<CargoStatus | "ALL"> = ["ALL", "PLANNED", "IN_TRANSIT", "AT_DESTINATION", "RECEIVED", "LOST"];
@@ -17,6 +18,7 @@ export function CargoTrackingPage() {
   const [expedition, setExpedition] = useState("ALL");
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState<"antarctic" | "arctic">("antarctic");
+  const [plottedCargoCount, setPlottedCargoCount] = useState(0);
   const [locationItem, setLocationItem] = useState("");
   const [location, setLocation] = useState("");
   const [locationMessage, setLocationMessage] = useState("");
@@ -52,11 +54,11 @@ export function CargoTrackingPage() {
         <label className="block text-sm font-medium text-slate-700">Search<input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="Name or tracking code" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
         <label className="block text-sm font-medium text-slate-700">Expedition<select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={expedition} onChange={(event) => setExpedition(event.target.value)}><option value="ALL">All expeditions</option>{expeditions.data?.data.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label className="block text-sm font-medium text-slate-700">Status<select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={status} onChange={(event) => setStatus(event.target.value as CargoStatus | "ALL")}>{STATUS_OPTIONS.map((item) => <option key={item} value={item}>{formatStatus(item)}</option>)}</select></label>
-        <label className="block text-sm font-medium text-slate-700">Polar projection<select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={region} onChange={(event) => setRegion(event.target.value as "antarctic" | "arctic")}><option value="antarctic">Antarctic (EPSG:3031)</option><option value="arctic">Arctic (EPSG:3995)</option></select></label>
+        <label className="block text-sm font-medium text-slate-700">Polar projection<select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={region} onChange={(event) => setRegion(event.target.value as "antarctic" | "arctic")}><option value="antarctic">{POLAR_REGION_DEFINITIONS.antarctic.label}</option><option value="arctic">{POLAR_REGION_DEFINITIONS.arctic.label}</option></select></label>
         <div className="border-t border-slate-100 pt-4"><p className="text-sm font-semibold">Field location update</p><select className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" value={locationItem} onChange={(event) => setLocationItem(event.target.value)}><option value="">Select cargo</option>{cargo.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" placeholder="latitude,longitude" value={location} onChange={(event) => setLocation(event.target.value)} /><button className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white" onClick={() => { void submitLocation(); }}>Save location</button>{locationMessage && <p className="mt-2 text-xs text-emerald-700">{locationMessage}</p>}</div>
         <div className="space-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">{STATUS_OPTIONS.slice(1).map((item) => <div key={item} className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: statusColors[item as CargoStatus] }} />{formatStatus(item)}</div>)}</div>
       </aside>
-      <section className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-2 text-sm font-semibold"><MapPinned className="h-4 w-4 text-sky-600" />{filteredCargo.length} cargo items on map</div><Search className="h-4 w-4 text-slate-400" /></div><div className="h-[560px] bg-slate-100"><PolarMap markers={filteredCargo.map((item) => ({ id: item.id, location: item.currentLocation ?? item.location, label: item.name, detail: `${item.trackingCode} · ${item.status}`, color: statusColors[item.status] }))} region={region} /></div><p className="px-5 py-3 text-xs text-slate-400">Structured coordinates are used when available; older text locations remain supported.</p></section>
+      <section className="overflow-hidden rounded-2xl bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div className="flex items-center gap-2 text-sm font-semibold"><MapPinned className="h-4 w-4 text-sky-600" />{plottedCargoCount} cargo items on map</div><Search className="h-4 w-4 text-slate-400" /></div><div className="h-[560px] bg-slate-100"><PolarMap markers={filteredCargo.map((item) => ({ id: item.id, location: item.currentLocation ?? item.location, label: item.name, detail: `${item.trackingCode} · ${item.status}`, color: statusColors[item.status] }))} region={region} onMarkerCountChange={setPlottedCargoCount} /></div><p className="px-5 py-3 text-xs text-slate-400">Structured coordinates are used when available; older text locations remain supported.</p></section>
     </div>
   </div>;
 }

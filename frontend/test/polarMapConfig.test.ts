@@ -58,8 +58,8 @@ test("polar region definitions match NASA GIBS metadata and shared config", () =
   assert.equal(POLAR_REGION_DEFINITIONS.antarctic.maxNativeZoom, 4);
   assert.equal(POLAR_REGION_DEFINITIONS.arctic.maxNativeZoom, 4);
   assert.match(POLAR_MAP_ATTRIBUTION, /NASA Global Imagery Browse Services/);
-  assert.match(POLAR_REGION_DEFINITIONS.antarctic.tileUrlTemplate, /BlueMarble_ShadedRelief_Bathymetry\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
-  assert.match(POLAR_REGION_DEFINITIONS.arctic.tileUrlTemplate, /BlueMarble_ShadedRelief_Bathymetry\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
+  assert.match(POLAR_REGION_DEFINITIONS.antarctic.tileUrlTemplate, /BlueMarble_NextGeneration\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
+  assert.match(POLAR_REGION_DEFINITIONS.arctic.tileUrlTemplate, /BlueMarble_NextGeneration\/default\/\{time\}\/\{matrixSet\}\/\{z\}\/\{y\}\/\{x\}\.\{format\}$/);
 });
 
 test("projected-distance helper is positive and finite for each region", () => {

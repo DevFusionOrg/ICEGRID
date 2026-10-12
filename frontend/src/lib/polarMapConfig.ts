@@ -48,7 +48,7 @@ const makePolarTileConfig = (region: PolarRegion): PolarRegionDefinition => {
   const matrixSet = (readEnvString("VITE_POLAR_MAP_MATRIX_SET", "500m") as "500m" | "250m") || "500m";
   const mimeType = (readEnvString("VITE_POLAR_MAP_MIME_TYPE", "image/jpeg") as "image/jpeg" | "image/png") || "image/jpeg";
   const format = (readEnvString("VITE_POLAR_MAP_FORMAT", "jpg") as "jpg" | "png") || "jpg";
-  const layer = readEnvString("VITE_POLAR_MAP_LAYER", "BlueMarble_ShadedRelief_Bathymetry");
+  const layer = readEnvString("VITE_POLAR_MAP_LAYER", "BlueMarble_NextGeneration");
   const maxNativeZoomSetting = (viteEnv as Record<string, unknown>).VITE_POLAR_MAP_MAX_NATIVE_ZOOM;
   const maxNativeZoom = typeof maxNativeZoomSetting === "string" && maxNativeZoomSetting.trim() !== "" && Number.isFinite(Number(maxNativeZoomSetting))
     ? Number(maxNativeZoomSetting)
