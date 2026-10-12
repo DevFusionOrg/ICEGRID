@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/locationEventId.test.ts test/realtimeClient.test.ts test/offlineQueue.test.ts test/offlineSync.test.ts test/polarMapConfig.test.ts test/polarMapPresentation.test.ts"
+    "test": "tsx --test test/locationEventId.test.ts test/realtimeClient.test.ts test/offlineQueue.test.ts test/offlineSync.test.ts test/polarMapConfig.test.ts test/polarMapPresentation.test.ts test/polarMapPageMarkers.test.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.8",
