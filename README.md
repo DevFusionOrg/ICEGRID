@@ -110,6 +110,14 @@ FRONTEND_URL=http://localhost:5173
 VITE_API_URL=http://localhost:8787/api
 ```
 
+### Polar maps
+
+Cargo tracking, personnel, and emergency alert locations use the shared Leaflet polar map. It uses EPSG:3031 for Antarctica and EPSG:3413 for the Arctic, with the matching NASA GIBS imagery endpoint and `BlueMarble_NextGeneration` layer. The Antarctic and Arctic GIBS endpoints are selected by region in the application; their base URLs are not environment overrides.
+
+The optional `VITE_POLAR_MAP_*` settings in `frontend/.env.example` show the current defaults for the layer, tile matrix set, image type and extension, and native and navigation zoom limits. Vite reads these at build time. The Blue Marble WMTS resource uses `image/jpeg` tiles with a `.jpeg` extension and has no date segment. Keep the matrix set, native zoom, MIME type, and file extension consistent with the selected GIBS layer; the application does not validate arbitrary combinations. The default `500m` matrix set has native zoom levels 0–4; the view can zoom to level 5.
+
+Map counters report records with valid coordinates inside the selected polar region, rather than the total records in each page. If GIBS imagery cannot load, the map reports its imagery status while still displaying any plottable markers.
+
 > 💡 You can also copy the example files:
 > ```bash
 > cp backend/.env.example backend/.env
