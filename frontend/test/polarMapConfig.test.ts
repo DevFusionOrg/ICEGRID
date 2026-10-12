@@ -160,6 +160,11 @@ test("native zoom falls back by matrix set and clamps to available resolutions",
     VITE_POLAR_MAP_MAX_NATIVE_ZOOM: "-3",
   });
   assert.equal(negativeZoom.maxNativeZoom, 0);
+
+  const decimalZoom = makePolarTileConfig("arctic", {
+    VITE_POLAR_MAP_MAX_NATIVE_ZOOM: "3.8",
+  });
+  assert.equal(decimalZoom.maxNativeZoom, 3);
 });
 
 test("projected-distance helper is positive and finite for each region", () => {

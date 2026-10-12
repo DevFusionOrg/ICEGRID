@@ -86,7 +86,7 @@ export function makePolarTileConfig(
   const resolutions = buildResolutionLevels(8192, levelCount);
   const defaultMaxNativeZoom = matrixSet === "250m" ? 5 : 4;
   const maxNativeZoom = Math.min(
-    Math.max(readEnvNumber(environment, "VITE_POLAR_MAP_MAX_NATIVE_ZOOM", defaultMaxNativeZoom), 0),
+    Math.max(Math.floor(readEnvNumber(environment, "VITE_POLAR_MAP_MAX_NATIVE_ZOOM", defaultMaxNativeZoom)), 0),
     resolutions.length - 1,
   );
   const minZoom = readEnvNumber(environment, "VITE_POLAR_MAP_MIN_ZOOM", 0);
