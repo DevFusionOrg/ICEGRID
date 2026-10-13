@@ -116,16 +116,73 @@ export type Expedition = {
   };
 };
 
+export type PersonnelRole = "LEAD" | "SCIENTIST" | "LOGISTICS" | "MEDICAL" | "ENGINEER" | "MEMBER";
+
+export type PersonnelStatus = "ASSIGNED" | "ON_SITE" | "RETURNED" | "INACTIVE";
+
+export const PERSONNEL_ROLE_LABELS: Record<PersonnelRole, string> = {
+  LEAD: "Lead",
+  SCIENTIST: "Scientist",
+  LOGISTICS: "Logistics",
+  MEDICAL: "Medical",
+  ENGINEER: "Engineer",
+  MEMBER: "Member",
+};
+
+export const PERSONNEL_STATUS_LABELS: Record<PersonnelStatus, string> = {
+  ASSIGNED: "Assigned",
+  ON_SITE: "On Site",
+  RETURNED: "Returned",
+  INACTIVE: "Inactive",
+};
+
+export const PERSONNEL_ROLES: { value: PersonnelRole; label: string }[] = [
+  { value: "LEAD", label: "Lead" },
+  { value: "SCIENTIST", label: "Scientist" },
+  { value: "LOGISTICS", label: "Logistics" },
+  { value: "MEDICAL", label: "Medical" },
+  { value: "ENGINEER", label: "Engineer" },
+  { value: "MEMBER", label: "Member" },
+];
+
+export const PERSONNEL_STATUSES: { value: PersonnelStatus; label: string }[] = [
+  { value: "ASSIGNED", label: "Assigned" },
+  { value: "ON_SITE", label: "On Site" },
+  { value: "RETURNED", label: "Returned" },
+  { value: "INACTIVE", label: "Inactive" },
+];
+
 export type Personnel = {
   id: string;
   expeditionId: string;
   firstName: string;
   lastName: string;
-  role: string;
-  status: string;
+  role: PersonnelRole;
+  status: PersonnelStatus;
+  email?: string | null;
+  phone?: string | null;
+  organization?: string | null;
+  emergencyContact?: string | null;
   lastKnownLocation: string | null;
   currentLocation?: LocationPoint | null;
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+export type CreatePersonnelInput = {
+  expeditionId: string;
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+  phone?: string | null;
+  organization?: string | null;
+  role?: PersonnelRole | string;
+  status?: PersonnelStatus | string;
+  lastKnownLocation?: string | null;
+  emergencyContact?: string | null;
+};
+
+export type UpdatePersonnelInput = Partial<CreatePersonnelInput>;
 
 export type InventoryItem = {
   id: string;
@@ -162,6 +219,10 @@ async function request<T>(path: string, options: RequestInit = {}) {
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
+  if (response.status === 204) {
+    notifyApiReachable();
+    return undefined as unknown as T;
+  }
   const body = (await response.json().catch(() => ({}))) as T & { error?: string };
   if (!response.ok) throw new Error(body.error ?? "Request failed");
   notifyApiReachable();
@@ -244,8 +305,23 @@ export function getUsers(token: string) {
   });
 }
 
-export function createPersonnel(token: string, data: Record<string, unknown>) {
+export function createPersonnel(token: string, data: CreatePersonnelInput) {
   return request<Personnel>("/personnel", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: JSON.stringify(data) });
+}
+
+export function updatePersonnel(token: string, id: string, data: UpdatePersonnelInput) {
+  return request<Personnel & { leadCleared?: boolean }>(`/personnel/${id}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(data),
+  });
+}
+
+export function deletePersonnel(token: string, id: string) {
+  return request<void>(`/personnel/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 export function createCargoItem(token: string, data: Record<string, unknown>) {

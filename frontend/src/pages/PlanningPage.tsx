@@ -36,6 +36,7 @@ import {
   createExpedition,
   createPersonnel,
   deleteExpedition,
+  deletePersonnel,
   generateExpeditionCode,
   getCollection,
   getExpedition,
@@ -168,13 +169,13 @@ export function PlanningPage() {
 
   const personnelQuery = useQuery({
     queryKey: ["personnel"],
-    queryFn: () => getCollection<Personnel>("/personnel?pageSize=200", token!),
+    queryFn: () => getCollection<Personnel>("/personnel?pageSize=100", token!),
     enabled: Boolean(token),
   });
 
   const cargoQuery = useQuery({
     queryKey: ["cargo"],
-    queryFn: () => getCollection<CargoItem>("/cargo-items?pageSize=200", token!),
+    queryFn: () => getCollection<CargoItem>("/cargo-items?pageSize=100", token!),
     enabled: Boolean(token),
   });
 
@@ -271,7 +272,7 @@ export function PlanningPage() {
       const firstName = parts[0] || "Member";
       const lastName = parts.slice(1).join(" ") || "Personnel";
       return createPersonnel(token!, {
-        expeditionId: selectedExpeditionId,
+        expeditionId: selectedExpeditionId!,
         firstName,
         lastName,
         role: personnelRole,
@@ -281,6 +282,17 @@ export function PlanningPage() {
       setPersonnelName("");
       setActionNotice("Personnel assigned to expedition.");
       invalidateData();
+    },
+  });
+
+  const removePersonnelMutation = useMutation({
+    mutationFn: (id: string) => deletePersonnel(token!, id),
+    onSuccess: () => {
+      setActionNotice("Personnel removed from expedition.");
+      invalidateData();
+    },
+    onError: (err: Error) => {
+      setActionNotice(`Failed to remove personnel: ${err.message}`);
     },
   });
 
@@ -398,13 +410,19 @@ export function PlanningPage() {
 
   const assignedPersonnel = useMemo(() => {
     if (!selectedExpeditionId) return [];
+    if (selectedExpeditionQuery.data?.personnel && selectedExpeditionQuery.data.personnel.length > 0) {
+      return selectedExpeditionQuery.data.personnel;
+    }
     return (personnelQuery.data?.data || []).filter((p) => p.expeditionId === selectedExpeditionId);
-  }, [selectedExpeditionId, personnelQuery.data?.data]);
+  }, [selectedExpeditionId, selectedExpeditionQuery.data?.personnel, personnelQuery.data?.data]);
 
   const assignedCargo = useMemo(() => {
     if (!selectedExpeditionId) return [];
+    if (selectedExpeditionQuery.data?.cargoItems && selectedExpeditionQuery.data.cargoItems.length > 0) {
+      return selectedExpeditionQuery.data.cargoItems;
+    }
     return (cargoQuery.data?.data || []).filter((c) => c.expeditionId === selectedExpeditionId);
-  }, [selectedExpeditionId, cargoQuery.data?.data]);
+  }, [selectedExpeditionId, selectedExpeditionQuery.data?.cargoItems, cargoQuery.data?.data]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -947,11 +965,25 @@ export function PlanningPage() {
                           <span className="font-semibold text-slate-800">
                             {p.firstName} {p.lastName}
                           </span>
-                          <span className="text-[10px] text-slate-400 ml-1.5">({p.role})</span>
+                          <span className="text-[10px] text-slate-400 ml-1.5">
+                            ({p.role}{p.status ? ` · ${p.status}` : ""})
+                          </span>
                         </div>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                          {p.status}
-                        </span>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            onClick={() => removePersonnelMutation.mutate(p.id)}
+                            disabled={removePersonnelMutation.isPending}
+                            className="rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-100 transition disabled:opacity-50"
+                            title="Remove personnel from expedition"
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            {p.status}
+                          </span>
+                        )}
                       </div>
                     ))}
                     {assignedPersonnel.length === 0 && (

@@ -29,18 +29,7 @@ const expeditionSchema = z.object({
   leadScientistId: idSchema.nullable().optional(),
 });
 
-const personnelSchema = z.object({
-  expeditionId: idSchema,
-  firstName: z.string().trim().min(1).max(100),
-  lastName: z.string().trim().min(1).max(100),
-  email: z.string().email().nullable().optional(),
-  phone: z.string().trim().max(50).nullable().optional(),
-  organization: z.string().trim().max(200).nullable().optional(),
-  role: z.enum(["LEAD", "SCIENTIST", "LOGISTICS", "MEDICAL", "ENGINEER", "MEMBER"]).optional(),
-  status: z.enum(["ASSIGNED", "ON_SITE", "RETURNED", "INACTIVE"]).optional(),
-  lastKnownLocation: z.string().trim().max(200).nullable().optional(),
-  emergencyContact: z.string().trim().max(200).nullable().optional(),
-});
+
 
 const cargoSchema = z.object({
   expeditionId: idSchema,
@@ -176,30 +165,7 @@ function createSimpleCrudRoutes<T extends object>(
   }));
 }
 
-export const personnelRoutes = Router();
-createSimpleCrudRoutes(personnelRoutes, personnelSchema, personnelSchema.partial(), {
-  name: "Personnel",
-  readPermission: "personnel.read",
-  managePermission: "personnel.manage",
-  list: async (skip, take) => {
-    const [rows, total] = await Promise.all([prisma.personnel.findMany({ skip, take, orderBy: { createdAt: "desc" }, include: { currentLocation: true } }), prisma.personnel.count()]);
-    const data = rows.map((row) => ({ ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null }));
-    return { data, total };
-  },
-  create: async (data) => {
-    const row = await prisma.personnel.create({ data, include: { currentLocation: true } });
-    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
-  },
-  get: async (id) => {
-    const row = await prisma.personnel.findUnique({ where: { id }, include: { currentLocation: true } });
-    return row ? { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null } : null;
-  },
-  update: async (id, data) => {
-    const row = await prisma.personnel.update({ where: { id }, data, include: { currentLocation: true } });
-    return { ...row, currentLocation: row.currentLocation ? serializeLocation(row.currentLocation) : null };
-  },
-  delete: async (id) => { await prisma.personnel.delete({ where: { id } }); },
-});
+export { personnelRoutes } from "../modules/personnel/routes.js";
 
 export const cargoRoutes = Router();
 createSimpleCrudRoutes(cargoRoutes, cargoSchema, cargoSchema.partial(), {

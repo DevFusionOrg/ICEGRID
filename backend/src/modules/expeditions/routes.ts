@@ -279,11 +279,11 @@ expeditionRoutes.get("/:id", requirePermission("expeditions.read"), asyncRoute(a
         select: { id: true, name: true, email: true, role: true },
       },
       personnel: {
-        select: { id: true, firstName: true, lastName: true, role: true, status: true, organization: true, email: true },
+        select: { id: true, firstName: true, lastName: true, role: true, status: true, organization: true, email: true, expeditionId: true },
         orderBy: { createdAt: "asc" },
       },
       cargoItems: {
-        select: { id: true, trackingCode: true, name: true, status: true, priority: true, quantity: true, weightKg: true },
+        select: { id: true, trackingCode: true, name: true, status: true, priority: true, quantity: true, weightKg: true, expeditionId: true },
         orderBy: { createdAt: "asc" },
       },
       inventoryItems: {
