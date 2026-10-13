@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const personnelCreateSchema = z
   .object({
-    expeditionId: z.string().min(1),
+    expeditionId: z.string().min(1).nullable().optional(),
     firstName: z.string().trim().min(1).max(100),
     lastName: z.string().trim().min(1).max(100),
     email: z.string().email().nullable().optional(),
@@ -24,7 +24,7 @@ export const personnelUpdateSchema = personnelCreateSchema
 export const personnelListSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
-  expeditionId: z.string().min(1).optional(),
+  expeditionId: z.string().min(1).nullable().optional(),
   status: z.enum(["ASSIGNED", "ON_SITE", "RETURNED", "INACTIVE"]).optional(),
   role: z.enum(["LEAD", "SCIENTIST", "LOGISTICS", "MEDICAL", "ENGINEER", "MEMBER"]).optional(),
   q: z.string().trim().optional(),

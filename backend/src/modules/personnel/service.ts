@@ -1,4 +1,5 @@
-import type { Location, Personnel } from "@prisma/client";
+import type { Location, Personnel, UserRole } from "@prisma/client";
+import bcrypt from "bcryptjs";
 import { prisma } from "../../db/prisma.js";
 import { serializeLocation } from "../locations/service.js";
 import type { PersonnelCreate, PersonnelUpdate, PersonnelListQuery } from "./types.js";
@@ -15,6 +16,16 @@ function serializePersonnel(row: PersonnelWithLocation) {
   };
 }
 
+export function mapPersonnelRoleToUserRole(role?: string): UserRole {
+  switch (role) {
+    case "LOGISTICS":
+      return "LOGISTICS_OFFICER";
+    case "LEAD":
+      return "COORDINATOR";
+    default:
+      return "FIELD_PERSONNEL";
+  }
+}
 
 export async function listPersonnel(query: PersonnelListQuery) {
   const { page, pageSize, expeditionId, status, role, q } = query;
@@ -65,19 +76,44 @@ export async function getPersonnel(id: string) {
 }
 
 export async function createPersonnel(data: PersonnelCreate) {
-  const expedition = await prisma.expedition.findUnique({
-    where: { id: data.expeditionId },
-    select: { id: true },
-  });
-  if (!expedition) {
-    throw new PersonnelError("Expedition not found", 400);
+  if (data.expeditionId) {
+    const expedition = await prisma.expedition.findUnique({
+      where: { id: data.expeditionId },
+      select: { id: true },
+    });
+    if (!expedition) {
+      throw new PersonnelError("Expedition not found", 400);
+    }
   }
 
+  if (data.email && prisma.user?.findUnique && prisma.user?.create) {
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!existingUser) {
+      const defaultPassword = process.env.SEED_PASSWORD || "ChangeMe123!";
+      const passwordHash = await bcrypt.hash(defaultPassword, 12);
+      await prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          passwordHash,
+          role: mapPersonnelRoleToUserRole(data.role),
+          isActive: true,
+        },
+      });
+    }
+  }
+
+  const { expeditionId, ...rest } = data;
+  const createData: Record<string, unknown> = {
+    ...rest,
+    ...(expeditionId ? { expeditionId } : {}),
+  };
   const row = await prisma.personnel.create({
-    data,
+    data: createData as any,
     include: { currentLocation: true },
   });
-  return serializePersonnel(row);
+  return serializePersonnel(row as PersonnelWithLocation);
 }
 
 export async function updatePersonnel(id: string, data: PersonnelUpdate) {
@@ -89,16 +125,27 @@ export async function updatePersonnel(id: string, data: PersonnelUpdate) {
       throw new PersonnelError("Personnel not found", 404);
     }
 
-    if (data.expeditionId && data.expeditionId !== existing.expeditionId) {
+    const updateData: Record<string, unknown> = { ...data };
+
+    if (data.status === "RETURNED") {
+      updateData.expeditionId = null;
+    }
+
+    const targetExpeditionId = updateData.expeditionId !== undefined
+      ? (updateData.expeditionId as string | null)
+      : existing.expeditionId;
+
+    if (targetExpeditionId && targetExpeditionId !== existing.expeditionId) {
       const newExpedition = await tx.expedition.findUnique({
-        where: { id: data.expeditionId },
+        where: { id: targetExpeditionId },
         select: { id: true },
       });
       if (!newExpedition) {
         throw new PersonnelError("Expedition not found", 400);
       }
+    }
 
-      // Clear leadScientistId on the previous expedition if it points to this person
+    if (existing.expeditionId && (targetExpeditionId !== existing.expeditionId || updateData.expeditionId === null)) {
       const { count } = await tx.expedition.updateMany({
         where: {
           id: existing.expeditionId,
@@ -106,12 +153,30 @@ export async function updatePersonnel(id: string, data: PersonnelUpdate) {
         },
         data: { leadScientistId: null },
       });
-      leadCleared = count > 0;
+      if (count > 0) leadCleared = true;
+    }
+
+    if (data.email && tx.user?.findUnique && tx.user?.create) {
+      const normalizedEmail = data.email.trim().toLowerCase();
+      const existingUser = await tx.user.findUnique({ where: { email: normalizedEmail } });
+      if (!existingUser) {
+        const defaultPassword = process.env.SEED_PASSWORD || "ChangeMe123!";
+        const passwordHash = await bcrypt.hash(defaultPassword, 12);
+        await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            name: `${data.firstName || existing.firstName} ${data.lastName || existing.lastName}`.trim(),
+            passwordHash,
+            role: mapPersonnelRoleToUserRole(data.role || existing.role),
+            isActive: true,
+          },
+        });
+      }
     }
 
     return tx.personnel.update({
       where: { id },
-      data,
+      data: updateData,
       include: { currentLocation: true },
     });
   });

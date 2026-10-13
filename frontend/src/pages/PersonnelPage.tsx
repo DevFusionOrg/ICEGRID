@@ -145,7 +145,7 @@ export function PersonnelPage() {
       const payload = {
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        expeditionId: form.expeditionId,
+        expeditionId: form.expeditionId ? form.expeditionId : null,
         role: form.role,
         status: form.status,
         email: form.email.trim() || null,
@@ -332,7 +332,7 @@ export function PersonnelPage() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-slate-500">
-                        {expeditionNames.get(person.expeditionId) ?? "—"}
+                        {person.expeditionId ? (expeditionNames.get(person.expeditionId) ?? "—") : "None (Unassigned)"}
                       </td>
                       <td className="px-5 py-4 text-slate-500">{person.email || "—"}</td>
                       <td className="px-5 py-4 text-slate-500">{person.organization || "—"}</td>
@@ -463,16 +463,15 @@ export function PersonnelPage() {
 
                 <div>
                   <label className="text-xs font-medium text-slate-700">
-                    Expedition <span className="text-rose-500">*</span>
+                    Expedition
                   </label>
                   <select
                     className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                    required
                     value={form.expeditionId}
                     onChange={(e) => setForm({ ...form, expeditionId: e.target.value })}
                   >
-                    <option value="" disabled>
-                      Select expedition
+                    <option value="">
+                      None (Unassigned)
                     </option>
                     {expeditions.data?.data.map((item) => (
                       <option key={item.id} value={item.id}>
@@ -502,7 +501,14 @@ export function PersonnelPage() {
                     <select
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
                       value={form.status}
-                      onChange={(e) => setForm({ ...form, status: e.target.value as PersonnelStatus })}
+                      onChange={(e) => {
+                        const newStatus = e.target.value as PersonnelStatus;
+                        setForm((prev) => ({
+                          ...prev,
+                          status: newStatus,
+                          expeditionId: newStatus === "RETURNED" ? "" : prev.expeditionId,
+                        }));
+                      }}
                     >
                       {PERSONNEL_STATUSES.map((s) => (
                         <option key={s.value} value={s.value}>

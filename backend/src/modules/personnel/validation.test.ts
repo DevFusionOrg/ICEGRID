@@ -43,9 +43,10 @@ describe("personnelCreateSchema", () => {
     expect(personnelCreateSchema.safeParse({ ...valid, unknownField: "x" }).success).toBe(false);
   });
 
-  it("rejects missing expeditionId", () => {
+  it("accepts missing or null expeditionId", () => {
     const { expeditionId: _, ...rest } = valid;
-    expect(personnelCreateSchema.safeParse(rest).success).toBe(false);
+    expect(personnelCreateSchema.safeParse(rest).success).toBe(true);
+    expect(personnelCreateSchema.safeParse({ ...valid, expeditionId: null }).success).toBe(true);
   });
 
   it("rejects firstName longer than 100 characters", () => {

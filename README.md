@@ -334,11 +334,6 @@ All protected routes require: `Authorization: Bearer <jwt_token>`
 | `alert:new` | New alert (Admin/Coordinator only) | Full alert with location |
 | `ping` | Every 15 seconds | Heartbeat |
 
-### Health Check
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/health` | Returns `{ status: "ok" }` |
 
 ---
 

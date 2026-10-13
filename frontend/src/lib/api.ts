@@ -154,7 +154,7 @@ export const PERSONNEL_STATUSES: { value: PersonnelStatus; label: string }[] = [
 
 export type Personnel = {
   id: string;
-  expeditionId: string;
+  expeditionId: string | null;
   firstName: string;
   lastName: string;
   role: PersonnelRole;
@@ -170,7 +170,7 @@ export type Personnel = {
 };
 
 export type CreatePersonnelInput = {
-  expeditionId: string;
+  expeditionId?: string | null;
   firstName: string;
   lastName: string;
   email?: string | null;

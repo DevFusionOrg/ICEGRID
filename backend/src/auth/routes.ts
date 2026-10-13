@@ -60,6 +60,22 @@ router.post("/register", async (request, response) => {
         role: "FIELD_PERSONNEL",
       },
     });
+
+    if (prisma.personnel?.create) {
+      const nameParts = name.trim().split(" ");
+      const firstName = nameParts[0] || name;
+      const lastName = nameParts.slice(1).join(" ") || "Personnel";
+      await prisma.personnel.create({
+        data: {
+          firstName,
+          lastName,
+          email: email.toLowerCase(),
+          role: "LOGISTICS",
+          status: "INACTIVE",
+        } as any,
+      });
+    }
+
     recordAuthAudit({ action: "registration.succeeded", userId: user.id, role: user.role });
     response.status(201).json({
       user: publicUser(user),
