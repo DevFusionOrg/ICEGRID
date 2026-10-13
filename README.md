@@ -304,6 +304,12 @@ All protected routes require: `Authorization: Bearer <jwt_token>`
 | `GET / POST` | `/api/expeditions/` | List / create expeditions |
 | `GET / PATCH / DELETE` | `/api/expeditions/:id` | Read / update / delete expedition |
 | `GET / POST` | `/api/personnel/` | List / create personnel |
+| `GET / PATCH / DELETE` | `/api/personnel/:id` | Read / update / delete personnel |
+
+**Personnel list filters** (query params): `expeditionId`, `status` (`ASSIGNED`\|`ON_SITE`\|`RETURNED`\|`INACTIVE`), `role` (`LEAD`\|`SCIENTIST`\|`LOGISTICS`\|`MEDICAL`\|`ENGINEER`\|`MEMBER`), `q` (searches first name, last name and email, case-insensitive), `page` (default `1`), `pageSize` (default `20`, max `100`).
+
+**Lead clearing**: When a personnel record is reassigned to a different `expeditionId`, the previous expedition's `leadScientistId` is automatically cleared if it referenced that person. The `PATCH` response includes `"leadCleared": true` when this side-effect fires.
+
 | `GET / POST` | `/api/cargo-items/` | List / create cargo items |
 | `GET / POST` | `/api/inventory-items/` | List / create inventory items |
 | `GET / POST` | `/api/alerts/` | List / create emergency alerts |
@@ -328,11 +334,6 @@ All protected routes require: `Authorization: Bearer <jwt_token>`
 | `alert:new` | New alert (Admin/Coordinator only) | Full alert with location |
 | `ping` | Every 15 seconds | Heartbeat |
 
-### Health Check
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/health` | Returns `{ status: "ok" }` |
 
 ---
 

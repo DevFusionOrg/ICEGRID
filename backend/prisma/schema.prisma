@@ -34,7 +34,7 @@ model Expedition {
 
 model Personnel {
   id           String           @id @default(cuid())
-  expeditionId String
+  expeditionId String?
   firstName    String
   lastName     String
   email        String?
@@ -48,7 +48,7 @@ model Personnel {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  expedition Expedition @relation(fields: [expeditionId], references: [id], onDelete: Cascade)
+  expedition Expedition? @relation(fields: [expeditionId], references: [id], onDelete: SetNull)
   ledExpeditions Expedition[] @relation("ExpeditionLead")
   currentLocation Location? @relation("PersonnelCurrentLocation", fields: [currentLocationId], references: [id], onDelete: SetNull)
   locationHistory PersonnelLocationHistory[]

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   AlertTriangle,
+  ArrowLeft,
   Calendar,
   CheckCircle2,
   Clock,
@@ -27,6 +28,7 @@ import {
   Edit,
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CargoItem,
   Expedition,
@@ -34,7 +36,6 @@ import {
   Personnel,
   createCargoItem,
   createExpedition,
-  createPersonnel,
   deleteExpedition,
   generateExpeditionCode,
   getCollection,
@@ -42,6 +43,7 @@ import {
   getExpeditionReadiness,
   getUsers,
   updateExpedition,
+  updatePersonnel,
   validateExpeditionCode,
 } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
@@ -103,6 +105,7 @@ function calculateDurationDays(startStr: string | null, endStr: string | null): 
 }
 
 export function PlanningPage() {
+  const navigate = useNavigate();
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
@@ -138,8 +141,9 @@ export function PlanningPage() {
   const [isCheckingCode, setIsCheckingCode] = useState(false);
 
   // Quick Assignment states
-  const [personnelName, setPersonnelName] = useState("");
-  const [personnelRole, setPersonnelRole] = useState("MEMBER");
+  const [candidateRoleFilter, setCandidateRoleFilter] = useState("ALL");
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [cargoName, setCargoName] = useState("");
   const [cargoCategory, setCargoCategory] = useState("General Cargo");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -168,13 +172,13 @@ export function PlanningPage() {
 
   const personnelQuery = useQuery({
     queryKey: ["personnel"],
-    queryFn: () => getCollection<Personnel>("/personnel?pageSize=200", token!),
+    queryFn: () => getCollection<Personnel>("/personnel?pageSize=100", token!),
     enabled: Boolean(token),
   });
 
   const cargoQuery = useQuery({
     queryKey: ["cargo"],
-    queryFn: () => getCollection<CargoItem>("/cargo-items?pageSize=200", token!),
+    queryFn: () => getCollection<CargoItem>("/cargo-items?pageSize=100", token!),
     enabled: Boolean(token),
   });
 
@@ -265,22 +269,34 @@ export function PlanningPage() {
     },
   });
 
-  const assignPersonnelMutation = useMutation({
+  const removePersonnelMutation = useMutation({
+    mutationFn: (id: string) => updatePersonnel(token!, id, { expeditionId: null }),
+    onSuccess: () => {
+      setActionNotice("Personnel removed from expedition.");
+      invalidateData();
+    },
+    onError: (err: Error) => {
+      setActionNotice(`Failed to remove personnel: ${err.message}`);
+    },
+  });
+
+  const assignExistingPersonnelMutation = useMutation({
     mutationFn: () => {
-      const parts = personnelName.trim().split(" ");
-      const firstName = parts[0] || "Member";
-      const lastName = parts.slice(1).join(" ") || "Personnel";
-      return createPersonnel(token!, {
+      if (!selectedCandidateId || !selectedExpeditionId) {
+        throw new Error("Select a personnel to assign");
+      }
+      return updatePersonnel(token!, selectedCandidateId, {
         expeditionId: selectedExpeditionId,
-        firstName,
-        lastName,
-        role: personnelRole,
+        status: "ASSIGNED",
       });
     },
     onSuccess: () => {
-      setPersonnelName("");
+      setSelectedCandidateId("");
       setActionNotice("Personnel assigned to expedition.");
       invalidateData();
+    },
+    onError: (err: Error) => {
+      setActionNotice(`Assignment failed: ${err.message}`);
     },
   });
 
@@ -398,13 +414,34 @@ export function PlanningPage() {
 
   const assignedPersonnel = useMemo(() => {
     if (!selectedExpeditionId) return [];
+    if (selectedExpeditionQuery.data?.personnel && selectedExpeditionQuery.data.personnel.length > 0) {
+      return selectedExpeditionQuery.data.personnel;
+    }
     return (personnelQuery.data?.data || []).filter((p) => p.expeditionId === selectedExpeditionId);
-  }, [selectedExpeditionId, personnelQuery.data?.data]);
+  }, [selectedExpeditionId, selectedExpeditionQuery.data?.personnel, personnelQuery.data?.data]);
+
+  const availableCandidates = useMemo(() => {
+    const list = personnelQuery.data?.data || [];
+    return list.filter((p) => {
+      if (p.expeditionId === selectedExpeditionId) return false;
+      if (candidateRoleFilter !== "ALL" && p.role !== candidateRoleFilter) return false;
+      if (candidateSearch.trim()) {
+        const q = candidateSearch.toLowerCase().trim();
+        const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
+        const email = (p.email || "").toLowerCase();
+        if (!fullName.includes(q) && !email.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [personnelQuery.data?.data, selectedExpeditionId, candidateRoleFilter, candidateSearch]);
 
   const assignedCargo = useMemo(() => {
     if (!selectedExpeditionId) return [];
+    if (selectedExpeditionQuery.data?.cargoItems && selectedExpeditionQuery.data.cargoItems.length > 0) {
+      return selectedExpeditionQuery.data.cargoItems;
+    }
     return (cargoQuery.data?.data || []).filter((c) => c.expeditionId === selectedExpeditionId);
-  }, [selectedExpeditionId, cargoQuery.data?.data]);
+  }, [selectedExpeditionId, selectedExpeditionQuery.data?.cargoItems, cargoQuery.data?.data]);
 
   return (
     <div className="space-y-6 pb-12">
@@ -421,7 +458,7 @@ export function PlanningPage() {
             Expedition / Mission Management
           </h1>
           <p className="mt-1 text-sm text-slate-500 max-w-2xl">
-            Administer primary polar scientific expeditions, coordinate command personnel, allocate cargo & equipment manifests, and track mission readiness.
+            Administer polar scientific expeditions, coordinate command personnel, allocate cargo & equipment and track mission readiness.
           </p>
         </div>
 
@@ -483,9 +520,8 @@ export function PlanningPage() {
         </div>
       </div>
 
-      {/* Main Grid: Expedition Cards & Detail Inspector */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)] items-start">
-        {/* Left Column: Expedition Cards List */}
+      {/* Main Content Area: Detail view (if selected) OR All Expeditions Grid */}
+      {!selectedExpedition ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider px-1">
             <span>Expeditions ({filteredExpeditions.length})</span>
@@ -516,7 +552,8 @@ export function PlanningPage() {
             </div>
           )}
 
-          {filteredExpeditions.map((item) => {
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {filteredExpeditions.map((item) => {
             const isSelected = selectedExpeditionId === item.id;
             const statusConfig = STATUS_CONFIG[item.status] || STATUS_CONFIG.PLANNED;
             const personnelCount = item._count?.personnel ?? 0;
@@ -672,52 +709,60 @@ export function PlanningPage() {
               </div>
             );
           })}
+          </div>
         </div>
-
-        {/* Right Column: Detailed Expedition Inspector */}
-        <div className="sticky top-6">
-          {selectedExpedition ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
-              {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white">
-                      {selectedExpedition.code}
-                    </span>
-                    <span
-                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                        STATUS_CONFIG[selectedExpedition.status]?.badgeClass || ""
-                      }`}
-                    >
-                      {selectedExpedition.status}
-                    </span>
-                  </div>
-                  <h2 className="mt-2 text-2xl font-bold text-slate-900">
-                    {selectedExpedition.name}
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    ID: <span className="font-mono">{selectedExpedition.id}</span>
-                  </p>
-                </div>
-
-                {canManage && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => handleOpenEdit(selectedExpedition)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-                    >
-                      <Edit className="h-3.5 w-3.5 text-slate-500" /> Edit Expedition
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteModal(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Cancel / Delete
-                    </button>
-                  </div>
-                )}
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-900 text-white">
+                  {selectedExpedition.code}
+                </span>
+                <span
+                  className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                    STATUS_CONFIG[selectedExpedition.status]?.badgeClass || ""
+                  }`}
+                >
+                  {selectedExpedition.status}
+                </span>
               </div>
+              <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                {selectedExpedition.name}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                ID: <span className="font-mono">{selectedExpedition.id}</span>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setSelectedExpeditionId(null)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition"
+                title="Back to all expeditions"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-slate-600" /> Back to Expeditions
+              </button>
+
+              {canManage && (
+                <>
+                  <button
+                    onClick={() => handleOpenEdit(selectedExpedition)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+                  >
+                    <Edit className="h-3.5 w-3.5 text-slate-500" /> Edit Expedition
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-rose-600" /> Cancel / Delete
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
 
               {/* Status Switcher Toolbar (for Admin/Coordinator) */}
               {canManage && (
@@ -816,7 +861,7 @@ export function PlanningPage() {
               </div>
 
               {/* Core Parameters Table / Grid */}
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
                 <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                     Destination
@@ -901,43 +946,81 @@ export function PlanningPage() {
                   </div>
 
                   {canManage && (
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (personnelName.trim()) assignPersonnelMutation.mutate();
-                      }}
-                      className="mb-3 space-y-2"
-                    >
-                      <input
-                        type="text"
-                        placeholder="Full Name (e.g. Dr. Ramesh Kumar)"
-                        className="w-full text-xs rounded-lg border border-slate-200 px-3 py-2"
-                        value={personnelName}
-                        onChange={(e) => setPersonnelName(e.target.value)}
-                        required
-                      />
-                      <div className="flex gap-2">
-                        <select
-                          className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 flex-1"
-                          value={personnelRole}
-                          onChange={(e) => setPersonnelRole(e.target.value)}
-                        >
-                          <option value="MEMBER">Member</option>
-                          <option value="LEAD">Expedition Lead</option>
-                          <option value="SCIENTIST">Scientist</option>
-                          <option value="LOGISTICS">Logistics</option>
-                          <option value="MEDICAL">Medical Officer</option>
-                          <option value="ENGINEER">Engineer</option>
-                        </select>
+                    <div className="mb-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-slate-700">Assign from Roster:</span>
                         <button
-                          type="submit"
-                          disabled={assignPersonnelMutation.isPending}
-                          className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                          type="button"
+                          onClick={() => navigate("/personnel")}
+                          className="px-2 py-0.5 rounded font-medium transition bg-slate-200 text-slate-700 hover:bg-slate-300 flex items-center gap-1 text-[11px]"
+                          title="Navigate to Personnel Management to register new personnel"
                         >
-                          Assign
+                          <UserPlus className="h-3 w-3" />
+                          New Personnel
                         </button>
                       </div>
-                    </form>
+
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (selectedCandidateId) assignExistingPersonnelMutation.mutate();
+                        }}
+                        className="space-y-2"
+                      >
+                        <div className="flex gap-2">
+                          <select
+                            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 w-1/3 bg-white"
+                            value={candidateRoleFilter}
+                            onChange={(e) => {
+                              setCandidateRoleFilter(e.target.value);
+                              setSelectedCandidateId("");
+                            }}
+                          >
+                            <option value="ALL">All Roles</option>
+                            <option value="LEAD">Lead</option>
+                            <option value="SCIENTIST">Scientist</option>
+                            <option value="LOGISTICS">Logistics</option>
+                            <option value="MEDICAL">Medical Officer</option>
+                            <option value="ENGINEER">Engineer</option>
+                            <option value="MEMBER">Member</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Filter by name..."
+                            className="text-xs rounded-lg border border-slate-200 px-2.5 py-1.5 flex-1 bg-white"
+                            value={candidateSearch}
+                            onChange={(e) => setCandidateSearch(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <select
+                            className="text-xs rounded-lg border border-slate-200 px-2 py-1.5 flex-1 bg-white truncate"
+                            value={selectedCandidateId}
+                            onChange={(e) => setSelectedCandidateId(e.target.value)}
+                            required
+                          >
+                            <option value="">
+                              {availableCandidates.length > 0
+                                ? `-- Select Personnel (${availableCandidates.length} available) --`
+                                : "-- No matching personnel found --"}
+                            </option>
+                            {availableCandidates.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.firstName} {p.lastName} ({p.role}) {p.expeditionId ? "• Current: assigned" : "• Unassigned"}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            disabled={!selectedCandidateId || assignExistingPersonnelMutation.isPending}
+                            className="bg-slate-900 text-white rounded-lg px-3 py-1.5 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            {assignExistingPersonnelMutation.isPending ? "Assigning..." : "Assign"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
                   )}
 
                   <div className="max-h-36 overflow-y-auto divide-y divide-slate-100 text-xs">
@@ -947,11 +1030,25 @@ export function PlanningPage() {
                           <span className="font-semibold text-slate-800">
                             {p.firstName} {p.lastName}
                           </span>
-                          <span className="text-[10px] text-slate-400 ml-1.5">({p.role})</span>
+                          <span className="text-[10px] text-slate-400 ml-1.5">
+                            ({p.role}{p.status ? ` · ${p.status}` : ""})
+                          </span>
                         </div>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                          {p.status}
-                        </span>
+                        {canManage ? (
+                          <button
+                            type="button"
+                            onClick={() => removePersonnelMutation.mutate(p.id)}
+                            disabled={removePersonnelMutation.isPending}
+                            className="rounded border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-100 transition disabled:opacity-50"
+                            title="Remove personnel from expedition"
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            {p.status}
+                          </span>
+                        )}
                       </div>
                     ))}
                     {assignedPersonnel.length === 0 && (
@@ -1033,17 +1130,7 @@ export function PlanningPage() {
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-12 text-center bg-white">
-              <Compass className="h-10 w-10 text-slate-300 mx-auto" />
-              <h3 className="mt-3 font-semibold text-slate-700">Select an expedition</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Click any expedition card on the left to inspect command leadership, personnel rosters, cargo manifests, and readiness checklists.
-              </p>
-            </div>
           )}
-        </div>
-      </div>
 
       {/* CREATE / EDIT EXPEDITION MODAL */}
       {(showCreateModal || showEditModal) && (
