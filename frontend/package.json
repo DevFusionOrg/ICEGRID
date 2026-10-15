@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b --noEmit",
     "test": "tsx --test test/locationEventId.test.ts test/realtimeClient.test.ts test/offlineQueue.test.ts test/offlineSync.test.ts test/polarMapConfig.test.ts test/polarMapPresentation.test.ts test/polarMapPageMarkers.test.ts"
   },
   "dependencies": {
